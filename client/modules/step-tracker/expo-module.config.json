@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["StepTrackerModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.steptracker.StepTrackerModule"]
+  }
+}
