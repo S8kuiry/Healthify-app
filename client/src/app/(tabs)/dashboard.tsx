@@ -1,19 +1,12 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, AppState, Platform, Pressable } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, ScrollView, Pressable } from 'react-native';
 import ScreenContainer from '@/components/ScreenContainer';
 import Svg, { Circle } from 'react-native-svg';
 
-import {
-  getTodaySteps,
-  getTodayStepsRaw,
-  hasStepSensor,
-  requestStepPermission,
-} from '../../../modules/step-tracker/src';
-import { activeCalories } from '@/domain/calorie';
+import { useActivity } from '@/context/activityContext';
 import { useProfile } from '@/context/profileContext';
 import ActivityGoalModal from '@/components/ActivityGoalModal';
 import { hasAnyGoal, hasStepGoal, primaryProgress } from '@/domain/goal';
-import { getWeekActivity, type DailyActivity, upsertDailyActivity } from '@/db/dailyActivityRepo';
 import WeeklyActivityChart from '@/components/WeeklyActivityChart';
 import {
   getCurrentWeekRange,
@@ -22,16 +15,11 @@ import {
 } from '@/domain/date';
 import TelemetryProgressRing from '@/components/TelemetryProgressRing';
 
-const STEP_POLL_MS = 2000;
-
 export default function DashboardScreen() {
 
   const { profile, updateGoals, clearStepGoal, clearCalorieGoal } = useProfile();
-  const [steps, setSteps] = useState<number | null>(null);
-  const [sensorMissing, setSensorMissing] = useState(false);
-  const [permissionDenied, setPermissionDenied] = useState(false);
+  const { steps, calories, weekData, permissionDenied, sensorMissing } = useActivity();
   const [modalMode, setModalMode] = useState<'initial' | 'steps' | 'calories' | null>(null);
-  const [weekData, setWeekData] = useState<DailyActivity[]>([]);
 
 
   const openGoalModal = useCallback((mode: 'initial' | 'steps' | 'calories') => {
@@ -41,124 +29,6 @@ export default function DashboardScreen() {
   const closeGoalModal = useCallback(() => {
     setModalMode(null);
   }, []);
-
-
-
-  // data writer function
-  // 1. Clean, isolated data writer function
-  const saveTodayToDisk = useCallback(async () => {
-    // Read directly from the native module source to avoid stale state closures
-    const liveSteps = getTodaySteps();
-    if (!profile || liveSteps === null || liveSteps === 0) return;
-
-    const liveCalories = activeCalories(liveSteps, profile) ?? 0;
-    const todayStr = toLocalDateString();
-
-    // Commit current tracking values straight into SQLite
-    await upsertDailyActivity(
-      todayStr,
-      liveSteps,
-      liveCalories,
-      profile.stepGoal,
-      profile.calorieGoal
-    );
-
-    // Refresh the weekly database state to immediately mirror changes in your chart
-    const { start, end } = getCurrentWeekRange();
-    const rows = await getWeekActivity(start, end);
-    setWeekData(rows);
-  }, [profile]);
-
-
-
-  // steps activity
-  const refreshSteps = useCallback(() => {
-    const raw = getTodayStepsRaw();
-    setSensorMissing(raw === -1 && !hasStepSensor());
-    setSteps(getTodaySteps());
-  }, []);
-
-  useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | undefined;
-
-    async function init() {
-      if (Platform.OS === 'android') {
-        const granted = await requestStepPermission();
-        setPermissionDenied(!granted);
-      }
-      refreshSteps();
-      interval = setInterval(refreshSteps, STEP_POLL_MS);
-    }
-
-    init();
-
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') {
-        if (Platform.OS === 'android') {
-          requestStepPermission().then((granted) => {
-            setPermissionDenied(!granted);
-            refreshSteps();
-          });
-        } else {
-          refreshSteps();
-        }
-      }
-    });
-
-    return () => {
-      if (interval) clearInterval(interval);
-      subscription.remove();
-    };
-  }, [refreshSteps]);
-
-
-
-  const calories = profile && steps !== null
-    ? activeCalories(steps, profile)
-    : null;
-
-
-  // useeffect that saves the daily metrics 
-  // 2. Separate background and periodic sync lifecycle engine
-  useEffect(() => {
-    if (!profile) return;
-
-    // Run an initial disk save when the dashboard mounts
-    saveTodayToDisk();
-
-    // Automatically sync live numbers to SQLite every 15 seconds
-    const diskSyncInterval = setInterval(() => {
-      saveTodayToDisk();
-    }, 15000);
-
-    // Fallback: Commit to SQLite the exact moment the user minimizes the app
-    const subscription = AppState.addEventListener('change', (nextAppState) => {
-      if (nextAppState === 'background' || nextAppState === 'inactive') {
-        saveTodayToDisk();
-      }
-    });
-
-    return () => {
-      clearInterval(diskSyncInterval);
-      subscription.remove();
-    };
-  }, [profile, saveTodayToDisk]);
-
-
-
-
-
-
-  // week activity
-  const refreshWeekData = useCallback(async () => {
-    const { start, end } = getCurrentWeekRange();
-    const rows = await getWeekActivity(start, end);
-    setWeekData(rows);
-  }, []);
-
-  useEffect(() => {
-    refreshWeekData();
-  }, [refreshWeekData]);
 
   const weekChartData = (() => {
     const { start } = getCurrentWeekRange();
@@ -273,13 +143,19 @@ export default function DashboardScreen() {
                     <View className="border border-dashed border-accent  bg-backgroundElement flex-row items-center justify-center gap-1 rounded-3xl px-3 py-1   items-center" style={{ minWidth: 92 }}>
 
 
-                      <Text className="text-textPrimary text-xs font-bold tracking-wide" style={{ fontVariant: ['tabular-nums'] }}>
+                      <Text
+                      style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
+                       className="text-textPrimary text-xs font-bold tracking-wide">
                         GOAL :
                       </Text>
-                      <Text className="text-accent text-xs font-bold tracking-wide" style={{ fontVariant: ['tabular-nums'] }}>
+                      <Text 
+                        style={{ lineHeight: 16, fontVariant: ['tabular-nums'] }}
+                      className="text-accent text-xs font-bold tracking-wide">
                         {profile.stepGoal.toLocaleString()}
                       </Text>
-                      <Text className="text-accent text-xs font-bold tracking-wide " style={{ fontVariant: ['tabular-nums'] }}>
+                      <Text 
+                      style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
+                      className="text-accent text-xs font-bold tracking-wide ">
                         steps
 
                       </Text>
@@ -340,13 +216,21 @@ export default function DashboardScreen() {
                     <View className="border border-dashed border-accent  bg-backgroundElement flex-row items-center justify-center gap-1 rounded-3xl px-2 py-1   items-center" style={{ width: 110 }}>
 
 
-                      <Text className="text-textPrimary text-xs font-bold tracking-wide" style={{ fontVariant: ['tabular-nums'] }}>
+                      <Text 
+                        style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
+
+                       className="text-textPrimary text-xs font-bold tracking-wide">
                         GOAL :
                       </Text>
-                      <Text className="text-accent text-xs font-bold tracking-wide" style={{ fontVariant: ['tabular-nums'] }}>
+                      <Text 
+                        style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
+
+                      className="text-accent text-xs font-bold tracking-wide">
                         {profile.calorieGoal.toLocaleString()}
                       </Text>
-                      <Text className="text-accent text-xs font-bold tracking-wide " style={{ fontVariant: ['tabular-nums'] }}>
+                      <Text
+                        style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
+                       className="text-accent text-xs font-bold tracking-wide ">
                         Kcal
 
                       </Text>

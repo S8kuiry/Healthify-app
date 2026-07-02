@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { runMigrations } from '../db/schema';
 import { getProfile, upsertProfile } from '../db/profileRepo';
-import { getAllWeightEntries, upsertWeightEntryForToday } from '../db/weightRepo';
+import { getAllWeightEntries, upsertWeightEntry, upsertWeightEntryForToday, deleteWeightEntry } from '../db/weightRepo';
 import { updateGoals as updateGoalsRepo } from '../db/profileRepo';
 
 
@@ -29,6 +29,8 @@ type ProfileContextValue = {
     updateGoals: (goals: { stepGoal?: number, calorieGoal?: number }) => Promise<void>;
     clearStepGoal: () => Promise<void>;
     clearCalorieGoal: () => Promise<void>;
+    updateWeight: (weight: NonNullable<WeightEntry>) => Promise<void>;
+    deleteWeight: (id: string) => Promise<void>;
 
 }
 
@@ -73,13 +75,26 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     // NEW — put this in its place:
     const updateProfile = async (newProfile: NonNullable<Profile>) => {
         await upsertProfile(newProfile);
-        const entry = await upsertWeightEntryForToday(newProfile.weightKg);
+        // const entry = await upsertWeightEntryForToday(newProfile.weightKg);
         setProfile(newProfile);
-        setWeightHistory((prev) => {
-            const withoutToday = prev.filter((e) => e.date !== entry.date);
-            return [...withoutToday, entry];
-        });
+        // setWeightHistory((prev) => {
+        //     const withoutToday = prev.filter((e) => e.date !== entry.date);
+        //     return [...withoutToday, entry];
+        // });
     };
+
+    const updateWeight = async (newWeight: NonNullable<WeightEntry>) => {
+        const entry = await upsertWeightEntry(newWeight.date, newWeight.weightKg);
+        setWeightHistory((prev) => {
+            const withoutDate = prev.filter((e) => e.date !== entry.date);
+            return [...withoutDate, entry];
+        });
+    }
+
+    const deleteWeight = async (id: string) => {
+        await deleteWeightEntry(id);
+        setWeightHistory((prev) => prev.filter((e) => e.id !== id));
+    }
 
 
     // goals section
@@ -110,7 +125,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <ProfileContext.Provider
-            value={{ profile, weightHistory, isLoading, saveProfile, updateProfile, updateGoals, clearStepGoal, clearCalorieGoal }}>
+            value={{ profile, weightHistory, isLoading, saveProfile, updateProfile, updateGoals, clearStepGoal, clearCalorieGoal, updateWeight, deleteWeight  }}>
             {children}
         </ProfileContext.Provider>
     );

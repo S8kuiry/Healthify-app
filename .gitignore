@@ -1,0 +1,4 @@
+.cursor/
+
+# Never commit Gradle/Android build outputs (including Expo modules)
+**/android/build/

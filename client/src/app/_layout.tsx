@@ -4,6 +4,7 @@ import { Slot, useRouter, useSegments } from 'expo-router';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ProfileProvider, useProfile } from '@/context/profileContext';
+import { ActivityProvider } from '@/context/activityContext';
 
 function RootNavigation() {
   const { profile, isLoading } = useProfile();
@@ -37,7 +38,9 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <ProfileProvider>
-        <RootNavigation />
+        <ActivityProvider>
+          <RootNavigation />
+        </ActivityProvider>
       </ProfileProvider>
     </SafeAreaProvider>
   );

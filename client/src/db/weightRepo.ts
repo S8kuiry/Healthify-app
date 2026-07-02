@@ -14,25 +14,32 @@ export async function getAllWeightEntries(): Promise<WeightEntry[]> {
   return rows.map((r) => ({ id: r.id, date: r.date, weightKg: r.weight_kg }));
 }
 
-export async function upsertWeightEntryForToday(weightKg: number): Promise<WeightEntry> {
+export async function upsertWeightEntry(date: string, weightKg: number): Promise<WeightEntry> {
   const db = await getDb();
-  const today = new Date().toISOString().split('T')[0];
 
-  // Replace any existing entry for today rather than creating duplicates —
-  // same rule we had in the in-memory version.
   const existing = await db.getFirstAsync<{ id: string }>(
     'SELECT id FROM weight_entries WHERE date = ?;',
-    [today]
+    [date]
   );
 
-  const id = existing?.id ?? `${today}-${Date.now()}`;
+  const id = existing?.id ?? `${date}-${Date.now()}`;
 
   await db.runAsync(
     `INSERT INTO weight_entries (id, date, weight_kg)
      VALUES (?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET weight_kg = excluded.weight_kg;`,
-    [id, today, weightKg]
+    [id, date, weightKg]
   );
 
-  return { id, date: today, weightKg };
+  return { id, date, weightKg };
+}
+
+export async function upsertWeightEntryForToday(weightKg: number): Promise<WeightEntry> {
+  const today = new Date().toISOString().split('T')[0];
+  return upsertWeightEntry(today, weightKg);
+}
+
+export async function deleteWeightEntry(id: string): Promise<void> {
+  const db = await getDb();
+  await db.runAsync('DELETE FROM weight_entries WHERE id = ?;', [id]);
 }

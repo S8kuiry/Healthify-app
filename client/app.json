@@ -18,8 +18,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "permissions": [
-        "android.permission.ACTIVITY_RECOGNITION"
-      ],
+  "android.permission.ACTIVITY_RECOGNITION",
+  "android.permission.FOREGROUND_SERVICE",
+  "android.permission.FOREGROUND_SERVICE_HEALTH",
+  "android.permission.POST_NOTIFICATIONS"
+],
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.client",
       "versionCode": 1

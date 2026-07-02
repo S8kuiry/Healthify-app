@@ -63,7 +63,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
   const goalLinePct = goal && goal > 0 ? Math.min(100, (goal / maxValue) * 100) : null;
 
   return (
-    <View className="bg-cardBackground rounded-[28px] p-5 pb-6 mb-5 shadow-sm">
+    <View className="bg-cardBackground rounded-3xl p-5 pb-4 mb-5 shadow-sm">
 
       {/* Header row */}
       <View className="flex-row items-center justify-between mb-4">

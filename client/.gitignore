@@ -41,3 +41,6 @@ example
 # generated native folders
 /ios
 /android
+
+# Expo module native build outputs (should never be committed)
+modules/**/android/build/

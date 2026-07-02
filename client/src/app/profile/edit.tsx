@@ -35,7 +35,14 @@ export default function EditProfileScreen() {
 
     // This both updates the profile snapshot AND logs a dated weight
     // entry for today, per the "editing weight = logging weight" decision.
-    await updateProfile({ heightCm: h, weightKg: w, age: a, sex });
+    await updateProfile({
+      heightCm: h,
+      weightKg: w,
+      age: a,
+      sex,
+      stepGoal: profile?.stepGoal ?? 0,
+      calorieGoal: profile?.calorieGoal ?? 0,
+    });
     router.back();
   };
 

@@ -39,7 +39,7 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
   }, [value, goal, hasGoal, circumference]);
 
   return (
-    <View className="bg-cardBackground rounded-[28px] p-5 shadow-sm items-center justify-center min-h-[180px] mb-5">
+    <View className="bg-cardBackground rounded-3xl p-4 shadow-sm items-center justify-center min-h-[140px] mb-5">
       
       {/* Header Row with Context & Selector Switch */}
       <View className="flex-row items-center justify-between w-full mb-5">
