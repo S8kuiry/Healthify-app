@@ -28,8 +28,8 @@ export async function getProfile(): Promise<Profile | null>{
         weightKg: row.weight_kg,
         age: row.age,
         sex: row.sex as 'male' | 'female',
-        stepGoal: row.step_goal,
-        calorieGoal: row.calorie_goal,
+        stepGoal: row.step_goal ?? 0,
+        calorieGoal: row.calorie_goal ?? 0,
     };
 
 }
@@ -38,16 +38,16 @@ export async function getProfile(): Promise<Profile | null>{
 export async function upsertProfile(profile: Profile): Promise<void> {
     const db = await getDb();
     await db.runAsync(
-      `INSERT INTO user_profile (id, height_cm, weight_kg, age, sex)
-       VALUES (1, ?, ?, ?, ?)
+      `INSERT INTO user_profile (id, height_cm, weight_kg, age, sex, step_goal, calorie_goal)
+       VALUES (1, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          height_cm = excluded.height_cm,
          weight_kg = excluded.weight_kg,
          age = excluded.age,
          sex = excluded.sex,
-         step_goal = excluded.step_goal,
+         step_goal = excluded.step_goal ,
          calorie_goal = excluded.calorie_goal;`,
-      [profile.heightCm, profile.weightKg, profile.age, profile.sex]
+      [profile.heightCm, profile.weightKg, profile.age, profile.sex, profile.stepGoal, profile.calorieGoal]
     );
 }
 

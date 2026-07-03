@@ -8,8 +8,8 @@ object StepTrackerEngine {
   private var lastSavedSteps = -1
   private var lastSavedAtMs = 0L
 
-  private const val NOTIFICATION_MIN_MS = 60_000L
-  private const val DB_SAVE_MIN_MS = 120_000L
+  private const val NOTIFICATION_MIN_MS = 10_000L
+  private const val DB_SAVE_MIN_MS = 60_000L
   private const val DB_SAVE_STEP_DELTA = 50
 
   fun onSensorRaw(context: Context, rawSteps: Int) {

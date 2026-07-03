@@ -138,9 +138,7 @@ fun goals(context: Context): Pair<Int, Int> {
     return p.getInt(KEY_BASELINE_TODAY_STEPS, 0)
   }
 
-
-
-
-
-
+  fun getRawStepsSinceReboot(context: Context): Int {
+    return prefs(context).getInt(KEY_BASELINE_RAW, -1)
+  }
 }

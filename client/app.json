@@ -18,11 +18,11 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "permissions": [
-  "android.permission.ACTIVITY_RECOGNITION",
-  "android.permission.FOREGROUND_SERVICE",
-  "android.permission.FOREGROUND_SERVICE_HEALTH",
-  "android.permission.POST_NOTIFICATIONS"
-],
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_HEALTH",
+        "android.permission.POST_NOTIFICATIONS"
+      ],
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.client",
       "versionCode": 1
@@ -47,6 +47,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "5de00e7f-05b6-43fb-afac-06915c0d29bf"
+      }
     }
   }
 }

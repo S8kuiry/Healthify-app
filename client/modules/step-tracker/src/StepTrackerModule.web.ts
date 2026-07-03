@@ -23,6 +23,9 @@ class StepTrackerModule extends NativeModule<{}> {
   stopForegroundTracking(): boolean {
     return false;
   }
+  isForegroundTrackingRunning(): boolean {
+    return false;
+  }
 }
 
-export default registerWebModule(StepTrackerModule, 'StepTrackerModule');
+export default registerWebModule(StepTrackerModule, 'StepTracker');

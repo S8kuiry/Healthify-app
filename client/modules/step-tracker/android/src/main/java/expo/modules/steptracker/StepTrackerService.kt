@@ -10,17 +10,30 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 
 class StepTrackerService : Service(), SensorEventListener {
+
+  companion object {
+    private const val TAG = "StepTrackerService"
+
+    @Volatile
+    var isRunning: Boolean = false
+      private set
+  }
 
   private lateinit var sensorManager: SensorManager
   private var stepSensor: Sensor? = null
 
   override fun onCreate() {
     super.onCreate()
+    isRunning = true
     StepTrackerNotification.ensureChannel(this)
     sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
     stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+
+    // Promote to foreground immediately — Android requires this within ~5s of start.
+    showForegroundNotification()
 
     stepSensor?.let {
       sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
@@ -28,10 +41,7 @@ class StepTrackerService : Service(), SensorEventListener {
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-    val steps = StepCounterStore.getTodaySteps(this)
-    val calories = StepCounterStore.activeCalories(this, steps)
-    val notification = StepTrackerNotification.build(this, steps, calories)
-    promoteToForeground(notification)
+    showForegroundNotification()
     return START_STICKY
   }
 
@@ -45,9 +55,23 @@ class StepTrackerService : Service(), SensorEventListener {
   override fun onBind(intent: Intent?): IBinder? = null
 
   override fun onDestroy() {
+    isRunning = false
     StepTrackerEngine.flush(this)
-    sensorManager.unregisterListener(this)
+    if (::sensorManager.isInitialized) {
+      sensorManager.unregisterListener(this)
+    }
     super.onDestroy()
+  }
+
+  private fun showForegroundNotification() {
+    try {
+      val steps = StepCounterStore.getTodaySteps(this)
+      val calories = StepCounterStore.activeCalories(this, steps)
+      val notification = StepTrackerNotification.build(this, steps, calories)
+      promoteToForeground(notification)
+    } catch (e: Exception) {
+      Log.e(TAG, "Failed to show foreground notification", e)
+    }
   }
 
   private fun promoteToForeground(notification: android.app.Notification) {

@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -45,13 +46,28 @@ class StepTrackerModule : Module() {
       return@Function sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_COUNTER) != null
     }
 
+    Function("isForegroundTrackingRunning") {
+      return@Function StepTrackerService.isRunning
+    }
+
     Function("setActivityProfile") { heightCm: Double, weightKg: Double, stepGoal: Int, calorieGoal: Int ->
       val context = applicationContext() ?: return@Function false
       StepCounterStore.setActivityProfile(context, heightCm, weightKg, stepGoal, calorieGoal)
-      if (foregroundServiceActive) {
+      if (foregroundServiceActive || StepTrackerService.isRunning) {
         StepTrackerNotification.refresh(context)
       }
       return@Function true
+    }
+
+    Function("setProfileMetrics") { heightCm: Double, weightKg: Double ->
+      val context = applicationContext() ?: return@Function false
+      StepCounterStore.setProfileMetrics(context, heightCm, weightKg)
+      return@Function true
+    }
+
+    Function("getRawStepsSinceReboot") {
+      val context = applicationContext() ?: return@Function -1
+      return@Function StepCounterStore.getRawStepsSinceReboot(context)
     }
 
     Function("getTodaySteps") {
@@ -61,14 +77,32 @@ class StepTrackerModule : Module() {
 
     Function("startForegroundTracking") {
       val context = applicationContext() ?: return@Function false
-      foregroundServiceActive = true
-      val intent = Intent(context, StepTrackerService::class.java)
-      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-        context.startForegroundService(intent)
-      } else {
-        context.startService(intent)
+
+      if (StepTrackerService.isRunning) {
+        foregroundServiceActive = true
+        return@Function true
       }
-      return@Function true
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
+        !hasActivityRecognitionPermission(context)
+      ) {
+        return@Function false
+      }
+
+      try {
+        foregroundServiceActive = true
+        val intent = Intent(context, StepTrackerService::class.java)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+          ContextCompat.startForegroundService(context, intent)
+        } else {
+          context.startService(intent)
+        }
+        return@Function true
+      } catch (e: Exception) {
+        Log.e("StepTrackerModule", "startForegroundTracking failed", e)
+        foregroundServiceActive = false
+        return@Function false
+      }
     }
 
     Function("stopForegroundTracking") {

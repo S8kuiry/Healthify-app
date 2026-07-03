@@ -1,0 +1,44 @@
+# Git / IDE (not needed on build server)
+.git
+.gitignore
+.vscode
+.cursor
+.claude
+
+# Docs / agent files
+*.md
+AGENTS.md
+CLAUDE.md
+LICENSE
+
+# Local caches & outputs (rebuilt on EAS)
+.expo
+dist
+web-build
+*.tsbuildinfo
+.metro-health-check*
+
+# Generated native folders — EAS runs prebuild fresh
+android
+ios
+
+# Native module build junk (can be very large)
+**/android/build
+**/android/.gradle
+**/android/.kotlin
+**/.gradle
+
+# iOS module files (skip if you only build Android APK)
+modules/step-tracker/ios
+
+# Local env / secrets
+.env*.local
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Dev-only scripts not used during EAS build
+scripts/reset-project.js
+example
