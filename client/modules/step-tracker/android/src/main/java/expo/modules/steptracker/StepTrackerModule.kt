@@ -80,6 +80,7 @@ class StepTrackerModule : Module() {
 
       if (StepTrackerService.isRunning) {
         foregroundServiceActive = true
+        StepCounterStore.setTrackingEnabled(context, true)
         return@Function true
       }
 
@@ -89,25 +90,20 @@ class StepTrackerModule : Module() {
         return@Function false
       }
 
-      try {
+      val started = StepTrackerServiceStarter.start(context)
+      if (started) {
         foregroundServiceActive = true
-        val intent = Intent(context, StepTrackerService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-          ContextCompat.startForegroundService(context, intent)
-        } else {
-          context.startService(intent)
-        }
-        return@Function true
-      } catch (e: Exception) {
-        Log.e("StepTrackerModule", "startForegroundTracking failed", e)
+        StepCounterStore.setTrackingEnabled(context, true)
+      } else {
         foregroundServiceActive = false
-        return@Function false
       }
+      return@Function started
     }
 
     Function("stopForegroundTracking") {
       val context = applicationContext() ?: return@Function false
       foregroundServiceActive = false
+      StepCounterStore.setTrackingEnabled(context, false)
       val intent = Intent(context, StepTrackerService::class.java)
       context.stopService(intent)
       return@Function true

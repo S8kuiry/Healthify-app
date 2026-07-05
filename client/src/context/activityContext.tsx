@@ -19,7 +19,7 @@ type ActivityContextValue = {
 const ActivityContext = createContext<ActivityContextValue | undefined>(undefined);
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
-  const { profile } = useProfile();
+  const { profile, dbReady } = useProfile();
 
   const [steps, setSteps] = useState<number | null>(null);
   const [weekData, setWeekData] = useState<DailyActivity[]>([]);
@@ -33,7 +33,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    if (!profile || Platform.OS !== 'android') return;
+    if (!profile || !dbReady || Platform.OS !== 'android') return;
 
     let sub: EventSubscription | undefined;
     let cancelled = false;
@@ -90,7 +90,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       sub?.remove();
       appSub.remove();
     };
-  }, [profile, refreshWeekFromDb]);
+  }, [profile, dbReady, refreshWeekFromDb]);
 
   const calories = useMemo(() => {
     if (!profile || steps === null) return null;

@@ -16,8 +16,8 @@ object StepCounterStore {
   private const val KEY_WEIGHT_KG = "profile_weight_kg"
   private const val KEY_STEP_GOAL = "profile_step_goal"
   private const val KEY_CALORIE_GOAL = "profile_calorie_goal"
+  private const val KEY_TRACKING_ENABLED = "tracking_enabled"
 
-  
 
   private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
 
@@ -58,6 +58,40 @@ fun goals(context: Context): Pair<Int, Int> {
   val p = prefs(context)
   return p.getInt(KEY_STEP_GOAL, 0) to p.getInt(KEY_CALORIE_GOAL, 0)
 }
+
+  fun setTrackingEnabled(context: Context, enabled: Boolean) {
+    prefs(context).edit().putBoolean(KEY_TRACKING_ENABLED, enabled).apply()
+  }
+
+  fun isTrackingEnabled(context: Context): Boolean {
+    return prefs(context).getBoolean(KEY_TRACKING_ENABLED, false)
+  }
+
+  /**
+   * If the calendar day advanced while the service was not running, persist the
+   * last known day to SQLite. Prefs are left unchanged so the next sensor event
+   * can run the normal rollover baseline reset in [updateFromRaw].
+   */
+  fun flushStaleDayToDb(context: Context) {
+    if (isStoredDateToday(context)) return
+    persistCurrentSnapshot(context)
+  }
+
+  fun isStoredDateToday(context: Context): Boolean {
+    return prefs(context).getString(KEY_BASELINE_DATE, null) == todayDateString()
+  }
+
+  /** Persist the in-progress day keyed by [KEY_BASELINE_DATE], whatever calendar day that is. */
+  fun persistCurrentSnapshot(context: Context) {
+    val p = prefs(context)
+    val storedDate = p.getString(KEY_BASELINE_DATE, null) ?: return
+    val steps = p.getInt(KEY_BASELINE_TODAY_STEPS, 0)
+    val calories = activeCalories(context, steps)
+    val (stepGoal, calorieGoal) = goals(context)
+    DailyActivityStore.upsert(
+      context, storedDate, steps, calories, stepGoal, calorieGoal
+    )
+  }
 
 
 

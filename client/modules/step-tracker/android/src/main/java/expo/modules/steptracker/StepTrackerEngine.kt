@@ -26,12 +26,8 @@ object StepTrackerEngine {
   }
 
   fun flush(context: Context) {
-    val steps = StepCounterStore.getTodaySteps(context)
-    val calories = StepCounterStore.activeCalories(context, steps)
-    val date = StepCounterStore.todayDateString()
-    val (stepGoal, calorieGoal) = StepCounterStore.goals(context)
-    DailyActivityStore.upsert(context, date, steps, calories, stepGoal, calorieGoal)
-    lastSavedSteps = steps
+    StepCounterStore.persistCurrentSnapshot(context)
+    lastSavedSteps = StepCounterStore.getTodaySteps(context).coerceAtLeast(0)
     lastSavedAtMs = System.currentTimeMillis()
   }
 

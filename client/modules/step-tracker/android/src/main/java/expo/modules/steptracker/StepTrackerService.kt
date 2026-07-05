@@ -29,6 +29,14 @@ class StepTrackerService : Service(), SensorEventListener {
     super.onCreate()
     isRunning = true
     StepTrackerNotification.ensureChannel(this)
+
+    // Persist any day that closed while the service was stopped; avoid flushing
+    // today with 0 when prefs still point at a previous calendar day.
+    StepCounterStore.flushStaleDayToDb(this)
+    if (StepCounterStore.isStoredDateToday(this)) {
+      StepTrackerEngine.flush(this)
+    }
+
     sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
     stepSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
 
@@ -61,6 +69,12 @@ class StepTrackerService : Service(), SensorEventListener {
       sensorManager.unregisterListener(this)
     }
     super.onDestroy()
+  }
+
+  override fun onTaskRemoved(rootIntent: Intent?) {
+    super.onTaskRemoved(rootIntent)
+    if (!StepCounterStore.isTrackingEnabled(this)) return
+    StepTrackerServiceStarter.start(this)
   }
 
   private fun showForegroundNotification() {

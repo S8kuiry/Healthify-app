@@ -23,6 +23,8 @@ export type WeightEntry = {
 type ProfileContextValue = {
     profile: Profile;
     isLoading: boolean;
+    /** True after runMigrations() completes — safe for native SQLite writes. */
+    dbReady: boolean;
     weightHistory: WeightEntry[];
     saveProfile: (profile: NonNullable<Profile>) => Promise<void>;
     updateProfile: (profile: NonNullable<Profile>) => Promise<void>;
@@ -42,13 +44,12 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
     const [darkMode, setDarkMode] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
+    const [dbReady, setDbReady] = useState(false);
 
-
-
-    // NEW — put this in its place:
     useEffect(() => {
         (async () => {
             await runMigrations();
+            setDbReady(true);
             const savedProfile = await getProfile();
             const history = await getAllWeightEntries();
             setProfile(savedProfile);
@@ -125,7 +126,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <ProfileContext.Provider
-            value={{ profile, weightHistory, isLoading, saveProfile, updateProfile, updateGoals, clearStepGoal, clearCalorieGoal, updateWeight, deleteWeight  }}>
+            value={{ profile, weightHistory, isLoading, dbReady, saveProfile, updateProfile, updateGoals, clearStepGoal, clearCalorieGoal, updateWeight, deleteWeight  }}>
             {children}
         </ProfileContext.Provider>
     );

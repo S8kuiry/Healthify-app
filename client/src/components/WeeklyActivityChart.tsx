@@ -10,7 +10,7 @@ type Props = {
   calorieGoal?: number;
 };
 
-type DayStatus = 'empty' | 'partial' | 'success' | 'neutral';
+type DayStatus = 'empty' | 'partial' | 'success' | 'logged';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const TRACK_HEIGHT = 110;
@@ -18,7 +18,7 @@ const STATUS_COLORS = {
   success: '#34D399',
   partial: '#EAB308',
   empty: 'rgba(148, 163, 184, 0.35)',
-  neutral: 'rgba(52, 211, 153, 0.45)',
+  logged: '#94a3b8',
 } as const;
 
 function getTodayDateString() {
@@ -26,7 +26,7 @@ function getTodayDateString() {
 }
 function getDayStatus(value: number, goal?: number): DayStatus {
   if (value === 0) return 'empty';
-  if (!goal || goal <= 0) return 'neutral';
+  if (!goal || goal <= 0) return 'logged';
   if (value >= goal) return 'success';
   return 'partial';
 }
@@ -37,8 +37,8 @@ function barFillClass(status: DayStatus, isToday: boolean): string {
       return isToday ? 'bg-accent' : 'bg-accent/80';
     case 'partial':
       return isToday ? 'bg-[#EAB308]' : 'bg-[#EAB308]/70';
-    case 'neutral':
-      return isToday ? 'bg-accent/60' : 'bg-accent/25';
+    case 'logged':
+      return isToday ? 'bg-slate-400' : 'bg-slate-500';
     default:
       return 'bg-backgroundElement/30';
   }
@@ -48,6 +48,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
   const [metric, setMetric] = useState<'steps' | 'calories'>('steps');
   const today = getTodayDateString();
   const goal = metric === 'steps' ? stepGoal : calorieGoal;
+  const hasGoal = (goal ?? 0) > 0;
 
   const values = data.map((d) => d[metric]);
   const total = values.reduce((a, b) => a + b, 0);
@@ -74,10 +75,10 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
           </Text>
         </View>
 
-        <View className="flex-row bg-backgroundElement/50 rounded-full p-0.5">
+        <View className="flex-row bg-backgroundElement/50 rounded-3xl p-0.5">
           <Pressable
             onPress={() => setMetric('steps')}
-            className={`px-3 py-1 rounded-full ${metric === 'steps' ? 'bg-accent' : ''}`}
+            className={`px-3 py-1 rounded-3xl ${metric === 'steps' ? 'bg-accent' : ''}`}
           >
             <Text
               className={`text-[10px] font-bold tracking-wide uppercase ${
@@ -89,7 +90,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
           </Pressable>
           <Pressable
             onPress={() => setMetric('calories')}
-            className={`px-3 py-1 rounded-full ${metric === 'calories' ? 'bg-accent' : ''}`}
+            className={`px-3 py-1 rounded-3xl ${metric === 'calories' ? 'bg-accent' : ''}`}
           >
             <Text
               className={`text-[10px] font-bold tracking-wide uppercase ${
@@ -131,7 +132,9 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
             Best Day
           </Text>
           <Text
-            className="text-accent text-base font-black tracking-tight"
+            className={`text-base font-black tracking-tight ${
+              hasGoal ? 'text-accent' : 'text-accent'
+            }`}
             style={{ fontVariant: ['tabular-nums'] }}
           >
             {best.toLocaleString()}
@@ -151,7 +154,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
             <View key={day.date} className="flex-1 flex-row items-end justify-center px-0.5">
               {/* Goal status stripe */}
               <View
-                className="rounded-full mr-0.5"
+                className="rounded-2xl mr-0.5"
                 style={{
                   width: 2,
                   height: status === 'empty' ? 12 : TRACK_HEIGHT,
@@ -162,12 +165,12 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
               />
 
               <View
-                className="flex-1 items-center justify-end overflow-hidden rounded-t-md bg-backgroundElement/20"
+                className="flex-1 items-center justify-end overflow-hidden rounded-t-2xl bg-backgroundElement"
                 style={{ height: TRACK_HEIGHT }}
               >
                 {goalLinePct !== null && (
                   <View
-                    className="absolute w-full border-t border-dashed border-textMuted/30"
+                    className="absolute w-full border-t border-dashed border-textMuted"
                     style={{ bottom: `${goalLinePct}%`, left: 0 }}
                   />
                 )}
@@ -179,7 +182,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
                   />
                 ) : (
                   <View
-                    className="rounded-full bg-backgroundElement/50"
+                    className="rounded-3xl bg-backgroundElement"
                     style={{ width: 6, height: 6, marginBottom: 4 }}
                   />
                 )}
@@ -204,7 +207,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
               >
                 {DAY_LABELS[weekdayIdx]}
               </Text>
-              {isToday && <View className="h-1 w-1 rounded-full bg-accent mt-1" />}
+              {isToday && <View className="h-1 w-1 rounded-2xl bg-accent mt-1" />}
             </View>
           );
         })}
