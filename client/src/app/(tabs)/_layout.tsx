@@ -37,7 +37,7 @@ export default function TabsLayout() {
         options={{
           title: 'Reminders',
           tabBarIcon: ({ color, size }) => (
-            <Ionicons name="alarm-outline" size={18} color={color} />
+            <Ionicons name="book-outline" size={18} color={color} />
           ),
         }}
       />

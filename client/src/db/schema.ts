@@ -7,6 +7,8 @@ export async function runMigrations() {
 
   await db.execAsync(`
     PRAGMA journal_mode = WAL;
+    PRAGMA foreign_keys = ON;
+
 
     CREATE TABLE IF NOT EXISTS user_profile (
       id INTEGER PRIMARY KEY CHECK (id = 1), -- enforces a single row
@@ -35,6 +37,35 @@ export async function runMigrations() {
   calorie_goal INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+
+
+
+
+    CREATE TABLE IF NOT EXISTS reminders (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1
+    );
+
+
+    CREATE TABLE IF NOT EXISTS reminder_times (
+    id TEXT PRIMARY KEY,
+    reminder_id TEXT NOT NULL REFERENCES reminders(id) ON DELETE CASCADE,
+    time TEXT NOT NULL,
+    repeat TEXT NOT NULL CHECK (repeat IN ('daily', 'once')),
+    date TEXT,
+    fire_count INTEGER NOT NULL DEFAULT 1,
+    fire_interval_seconds INTEGER NOT NULL DEFAULT 60,
+    repeat_burst_daily INTEGER NOT NULL DEFAULT 1,
+    notification_ids TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_reminder_times_reminder_id
+    ON reminder_times(reminder_id);
+
+
+
 
 
   `);
