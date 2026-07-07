@@ -6,6 +6,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ProfileProvider, useProfile } from '@/context/profileContext';
 import { ActivityProvider } from '@/context/activityContext';
+import { ReminderProvider } from '@/context/reminderContext';
 
 /**
  * Set the notification handler for the app.
@@ -53,11 +54,13 @@ function RootNavigation() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <ProfileProvider>
-        <ActivityProvider>
+    <ProfileProvider>
+      <ActivityProvider>
+        <ReminderProvider>
           <RootNavigation />
-        </ActivityProvider>
-      </ProfileProvider>
-    </SafeAreaProvider>
+        </ReminderProvider>
+      </ActivityProvider>
+    </ProfileProvider>
+  </SafeAreaProvider>
   );
 }

@@ -13,19 +13,19 @@ module.exports = {
   theme: {
     extend: {
         colors: {
-          // Tailwind reads the live values directly from the CSS engine variables
-        background: "var(--background)",
-        backgroundElement: "var(--background-element)",
-        backgroundSelected: "var(--background-selected)",
-        textPrimary: "var(--text-primary)",
-        textSecondary: "var(--text-secondary)",
-        textMuted: "var(--text-muted)",
-        accent: "var(--accent)",
-        accentLight: "var(--accentLight)",
-        danger: "var(--danger)",
-        cardBackground: "var(--card-background)",
-        lightBackground: "var(--lightBackground)",
-        border: "var(--border)", // 💡 Added this for clean bounding boxes
+          // RGB channels in global.css; <alpha-value> enables /80, /10, etc.
+        background: "rgb(var(--background) / <alpha-value>)",
+        backgroundElement: "rgb(var(--background-element) / <alpha-value>)",
+        backgroundSelected: "rgb(var(--background-selected) / <alpha-value>)",
+        textPrimary: "rgb(var(--text-primary) / <alpha-value>)",
+        textSecondary: "rgb(var(--text-secondary) / <alpha-value>)",
+        textMuted: "rgb(var(--text-muted) / <alpha-value>)",
+        accent: "rgb(var(--accent) / <alpha-value>)",
+        accentLight: "rgb(var(--accentLight) / <alpha-value>)",
+        danger: "rgb(var(--danger) / <alpha-value>)",
+        cardBackground: "rgb(var(--card-background) / <alpha-value>)",
+        lightBackground: "rgb(var(--lightBackground) / <alpha-value>)",
+        border: "rgb(var(--border) / <alpha-value>)",
 
          
         },

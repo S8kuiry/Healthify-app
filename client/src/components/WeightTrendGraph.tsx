@@ -93,11 +93,20 @@ export default function WeightTrendGraph({ weightHistory }: WeightTrendGraphProp
         </Text> */}
       </View>
 
-      <View className="h-[210px] rounded-3xl bg-cardBackground  py-4 px-4 shadow-sm relative overflow-hidden">
+      <View className={` ${graphData.nodes.length === 0 ? ' h-[170px]' : ' h-[210px]'}   rounded-3xl bg-cardBackground  py-4 px-4 shadow-sm relative overflow-hidden`}>
         {graphData.nodes.length === 0 ? (
           <View className="flex-1 items-center justify-center">
-            <Text className="text-textMuted text-[11px] font-medium text-center leading-relaxed">
+            <View className="h-16 w-16 rounded-full border-[3px] border-backgroundElement/50 items-center justify-center mb-3">
+              <View className="h-10 w-10 rounded-full border-[3px] border-accent/30 items-center justify-center" />
+            </View>
+
+
+
+            <Text className="text-textPrimary text-xs font-bold tracking-tight mb-1">
               No weight entries yet. Add logs below to see your trend.
+            </Text>
+            <Text className="text-textMuted text-[11px] font-medium text-center px-4 leading-relaxed">
+               Add your weight in the profile interface to see your trend.
             </Text>
           </View>
         ) : (
@@ -225,13 +234,12 @@ export default function WeightTrendGraph({ weightHistory }: WeightTrendGraphProp
                         width: 56,
                         textAlign: 'center',
                       }}
-                      className={`text-[8px] font-black tracking-widest uppercase ${
-                        entry.changeType === 'up'
+                      className={`text-[8px] font-black tracking-widest uppercase ${entry.changeType === 'up'
                           ? 'text-danger'
                           : entry.changeType === 'down'
                             ? 'text-accent'
                             : 'text-textMuted'
-                      }`}
+                        }`}
                     >
                       {entry.changeText}
                     </Text>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TextInput, Pressable } from 'react-native';
 import { validateStepGoal, validateCalorieGoal } from '@/domain/goal';
+import { useAppColors } from '@/hooks/use-app-colors';
 
 type Mode = 'initial' | 'steps' | 'calories';
 type Scope = 'steps' | 'calories' | 'both';
@@ -30,6 +31,7 @@ export default function ActivityGoalModal({
   const [stepInput, setStepInput] = useState('');
   const [calorieInput, setCalorieInput] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const colors = useAppColors();
 
   // Reset local state whenever the modal opens
   useEffect(() => {
@@ -158,7 +160,7 @@ export default function ActivityGoalModal({
                 onChangeText={setCalorieInput}
                 keyboardType="number-pad"
                 placeholder="e.g. 300"
-                placeholderTextColor="#8a8a8a"
+                placeholderTextColor={colors.textSecondary}
                 className="bg-lightBackground rounded-2xl px-4 py-3 text-textPrimary text-base font-bold"
               />
             </View>
@@ -182,7 +184,7 @@ export default function ActivityGoalModal({
               onPress={onClose}
               className="flex flex-1 rounded-3xl border border-textSecondary border-dashed py-2 items-center justify-center bg-backgroundElement"
             >
-              <Text className="text-textSecondary text-xs font-black tracking-wide uppercase">Cancel</Text>
+              <Text className="text-textPrimary text-xs font-black tracking-wide uppercase">Cancel</Text>
             </Pressable>
             <Pressable
               onPress={handleSave}

@@ -5,10 +5,11 @@
   "dependencies": {
     "@expo/ui": "~56.0.18",
     "@expo/vector-icons": "^15.1.1",
+    "@react-native-community/datetimepicker": "9.1.0",
     "chrono-node": "^2.9.1",
     "expo": "~56.0.12",
     "expo-constants": "~56.0.18",
-    "expo-crypto": "^57.0.0",
+    "expo-crypto": "~56.0.4",
     "expo-dev-client": "~56.0.20",
     "expo-device": "~56.0.4",
     "expo-font": "~56.0.7",
@@ -41,6 +42,8 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "babel-preset-expo": "^56.0.15",
+    "eslint": "^9.0.0",
+    "eslint-config-expo": "~56.0.4",
     "typescript": "~6.0.3"
   },
   "scripts": {

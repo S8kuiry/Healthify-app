@@ -39,10 +39,10 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
   }, [value, goal, hasGoal, circumference]);
 
   return (
-    <View className="bg-cardBackground rounded-3xl p-4 shadow-sm items-center justify-center min-h-[140px] mb-5">
+    <View className="bg-cardBackground rounded-3xl px-4 py-4 shadow-sm items-center justify-center min-h-[140px] mb-5">
       
       {/* Header Row with Context & Selector Switch */}
-      <View className="flex-row items-center justify-between w-full mb-5">
+      <View className="flex-row items-center justify-between w-full mb-4">
         <View className="flex-row items-center">
           <View className="h-2 w-[2px] bg-accent mr-1.5" />
           <Text className="text-textSecondary text-[10px] font-bold tracking-[2px] uppercase">
@@ -145,8 +145,8 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
       ) : (
         /* Empty / Missing Goal Config State Layout */
         <>
-          <View className="h-16 w-16 rounded-full border-[3px] border-backgroundElement/40 items-center justify-center mb-3">
-            <View className="h-10 w-10 rounded-full border-[3px] border-accent/20 items-center justify-center" />
+          <View className="h-16 w-16 rounded-full border-[3px] border-backgroundElement/50 items-center justify-center mb-3">
+            <View className="h-10 w-10 rounded-full border-[3px] border-accent/30 items-center justify-center" />
           </View>
 
           <Text className="text-textPrimary text-xs font-bold tracking-tight mb-1">

@@ -61,7 +61,7 @@ export default function DashboardScreen() {
 
   return (
     <ScreenContainer>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
         <View style={{ paddingHorizontal: 4 }}>
 
           {permissionDenied && (
@@ -140,7 +140,7 @@ export default function DashboardScreen() {
                   }}
                 >
                   {profile && profile.stepGoal > 0 ? (
-                    <View className="border border-dashed border-accent  bg-backgroundElement flex-row items-center justify-center gap-1 rounded-3xl px-3 py-1   items-center" style={{ minWidth: 92 }}>
+                    <View className="border border-dashed border-accent  bg-lightBackground flex-row items-center justify-center gap-1 rounded-3xl px-3 py-1   items-center" style={{ minWidth: 92 }}>
 
 
                       <Text
@@ -213,7 +213,7 @@ export default function DashboardScreen() {
                   className="rounded-full flex-1  py-1 mt-3 items-center justify-center active:opacity-60"
                 >
                   {profile && profile.calorieGoal > 0 ? (
-                    <View className="border border-dashed border-accent  bg-backgroundElement flex-row items-center justify-center gap-1 rounded-3xl px-2 py-1   items-center" style={{ width: 110 }}>
+                    <View className="border border-dashed border-accent  bg-lightBackground flex-row items-center justify-center gap-1 rounded-3xl px-2 py-1   items-center" style={{ width: 110 }}>
 
 
                       <Text 
@@ -250,80 +250,7 @@ export default function DashboardScreen() {
 
 
 
-          {/* Native Module Preview Section */}
-          {/* Telemetry Ring Section
-          <View className="bg-cardBackground rounded-[28px] p-5 shadow-sm items-center justify-center min-h-[160px] mb-5">
-            {profile && hasAnyGoal(profile) && steps !== null ? (
-              (() => {
-                const progress = primaryProgress(steps, profile);
-                const pct = Math.round(progress * 100);
-                const size = 96;
-                const strokeWidth = 8;
-                const radius = (size - strokeWidth) / 2;
-                const circumference = 2 * Math.PI * radius;
-                const dashOffset = circumference * (1 - progress);
-
-                return (
-                  <>
-                    <View style={{ width: size, height: size }} className="items-center justify-center mb-3">
-                      <Svg width={size} height={size}>
-                        <Circle
-                          cx={size / 2}
-                          cy={size / 2}
-                          r={radius}
-                          stroke={`${pct > 0 ? 'rgba(166, 189, 167, 0.85)' : 'rgba(191, 194, 191, 0.81)'}`}
-                          strokeWidth={strokeWidth}
-                          fill="transparent"
-                        />
-                        <Circle
-                          cx={size / 2}
-                          cy={size / 2}
-                          r={radius}
-                          stroke="#7CF26B"
-                          strokeWidth={strokeWidth}
-                          fill={`${pct > 0 ? 'transparent' : 'rgb(235, 241, 237)'}`}
-                          strokeDasharray={`${circumference} ${circumference}`}
-                          strokeDashoffset={dashOffset}
-                          strokeLinecap="round"
-
-                        />
-                      </Svg>
-                      <View className="absolute items-center justify-center">
-                        <Text
-                          className="text-textPrimary text-lg font-black tracking-tight"
-                          style={{ fontVariant: ['tabular-nums'] }}
-                        >
-                          {pct}%
-                        </Text>
-                      </View>
-                    </View>
-
-                    <Text className="text-textPrimary text-xs font-bold tracking-tight mb-1">
-                      Daily Goal Progress
-                    </Text>
-                    <Text className="text-textMuted text-[11px] font-medium text-center px-4 leading-relaxed">
-                      {hasStepGoal(profile)
-                        ? `${steps?.toLocaleString()} / ${profile.stepGoal.toLocaleString()} steps`
-                        : `${calories?.toLocaleString()} / ${profile.calorieGoal.toLocaleString()} kcal`}
-                    </Text>
-                  </>
-                );
-              })()
-            ) : (
-              <>
-                <View className="h-16 w-16 rounded-full border-[3px] border-backgroundElement/40 items-center justify-center mb-3">
-                  <View className="h-10 w-10 rounded-full border-[3px] border-accent/20 items-center justify-center" />
-                </View>
-
-                <Text className="text-textPrimary text-xs font-bold tracking-tight mb-1">
-                  Telemetry Ring Engine
-                </Text>
-                <Text className="text-textMuted text-[11px] font-medium text-center px-4 leading-relaxed">
-                  Set a goal to see your daily progress ring here.
-                </Text>
-              </>
-            )}
-          </View> */}
+         
 
 
           {/* Clean Modular Telemetry Ring Section */}

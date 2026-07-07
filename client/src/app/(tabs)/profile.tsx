@@ -65,8 +65,8 @@ export default function ProfileScreen() {
             <View className="flex-1 items-center">
               <Text className="text-textSecondary text-[10px] font-bold tracking-widest uppercase">Weight</Text>
               <View className="flex-row items-baseline mt-1.5">
-                <Text className="text-textPrimary text-xl font-black tracking-tight">{profile.weightKg}</Text>
-                <Text className="text-accent text-xs font-bold ml-0.5">kg</Text>
+                <Text className="text-textPrimary text-[15px] font-black tracking-tight">{profile.weightKg}</Text>
+                <Text className="text-accent text-xs font-bold ml-1">kg</Text>
               </View>
             </View>
 
@@ -77,8 +77,8 @@ export default function ProfileScreen() {
             <View className="flex-1 items-center">
               <Text className="text-textSecondary text-[10px] font-bold tracking-widest uppercase">Height</Text>
               <View className="flex-row items-baseline mt-1.5">
-                <Text className="text-textPrimary text-xl font-black tracking-tight">{profile.heightCm}</Text>
-                <Text className="text-accent text-xs font-bold ml-0.5">cm</Text>
+                <Text className="text-textPrimary text-[15px] font-black tracking-tight">{profile.heightCm}</Text>
+                <Text className="text-accent text-xs font-bold ml-1">cm</Text>
               </View>
             </View>
 
@@ -89,8 +89,8 @@ export default function ProfileScreen() {
             <View className="flex-1 items-center">
               <Text className="text-textSecondary text-[10px] font-bold tracking-widest uppercase">Age</Text>
               <View className="flex-row items-baseline mt-1.5">
-                <Text className="text-textPrimary text-xl font-black tracking-tight">{profile.age}</Text>
-                <Text className="text-accent text-xs font-bold ml-0.5">yrs</Text>
+                <Text className="text-textPrimary text-[15px] font-black tracking-tight">{profile.age}</Text>
+                <Text className="text-accent text-xs font-bold ml-1">years</Text>
               </View>
             </View>
 
@@ -98,18 +98,7 @@ export default function ProfileScreen() {
 
           {/* Weight Trend Graph Section */}
           <View className="mb-6">
-            {/* <View className="flex-row justify-between items-baseline mb-3 px-1">
-              <Text className="text-textPrimary text-xs font-black tracking-tight uppercase">Weight Trend</Text>
-              <Text className="text-textMuted text-[10px] font-bold tracking-wider uppercase">Last 7 Entries</Text>
-            </View>
-
-            <View className="h-44 rounded-[28px] bg-cardBackground items-center justify-center p-5 shadow-sm">
-              <View className="border border-dashed border-textMuted/20 rounded-2xl w-full h-full items-center justify-center p-4">
-                <Text className="text-textMuted text-[11px] font-medium text-center leading-relaxed">
-                  Chart library wiring goes here next — raw data logs detailed below.
-                </Text>
-              </View>
-            </View> */}
+           
             <WeightTrendGraph weightHistory={weightHistory} />
 
           </View>

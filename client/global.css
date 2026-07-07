@@ -6,35 +6,39 @@
 @layer base {
   /* --- PREMIUM LIGHT MODE (Clean & Crisp Contrast) --- */
   :root {
-    --background: rgb(232, 232, 232);         /* Slate 100: Darker cool-grey background */
-    --card-background: rgb(255, 255, 255);    /* Pure White cards will now pop */
-    --border: rgb(71, 85, 105);             /* Slate 200: Crisp, subtle card outline */
-    
-    --text-primary: rgb(15, 23, 42);          /* Deep Slate */
-    --text-secondary: rgb(84, 95, 110);       /* Slate 600 */
-    --text-muted: rgb(148, 163, 184);
-    
-    --accent: rgb(5, 150, 105);               /* Premium Emerald Green */
-    --accentLight:rgb(175, 216, 203);
-    --lightBackground:rgb(206, 212, 224);               /* Premium Emerald Green */
+    --background: 232 232 232;         /* Slate 100: Darker cool-grey background */
+    --card-background: 255 255 255;    /* Pure White cards will now pop */
+    --border: 71 85 105;               /* Slate 600: Crisp, subtle card outline */
 
-    --danger: rgb(225, 29, 72);
+    --text-primary: 15 23 42;          /* Deep Slate */
+    --text-secondary: 84 95 110;       /* Slate 600 */
+    --text-muted: 148 163 184;
+
+    --accent: 5 150 105;               /* Premium Emerald Green */
+    --accentLight: 175 216 203;
+    --lightBackground: 206 212 224;
+    --background-element: 206 212 224;
+    --background-selected: 224 225 230;
+
+    --danger: 225 29 72;
   }
 
   /* --- PREMIUM DARK MODE (Deep Midnight Navy) --- */
   @media (prefers-color-scheme: dark) {
     :root {
-      --background: rgb(11, 17, 30);           /* Darkest deep slate/navy */
-      --card-background: rgb(22, 30, 49);      /* Lighter container background */
-      --border: rgb(84, 95, 110);               /* Distinct, clean dark outline */
-      
-      --text-primary: rgb(241, 245, 249);      /* Crisp off-white */
-      --text-secondary: rgb(144, 155, 171);    /* Muted gray-blue */
-      --text-muted: rgb(100, 116, 139);
-      
-      --accent: rgb(52, 211, 153);             /* Vibrant Mint Emerald */
-      --danger: rgb(244, 63, 94);
-      --lightBackground:rgb(206, 212, 224);
+      --background: 11 17 30;           /* Darkest deep slate/navy */
+      --card-background: 22 30 49;      /* Lighter container background */
+      --border: 84 95 110;              /* Distinct, clean dark outline */
+
+      --text-primary: 241 245 249;      /* Crisp off-white */
+      --text-secondary: 144 155 171;    /* Muted gray-blue */
+      --text-muted: 100 116 139;
+
+      --accent: 52 211 153;             /* Vibrant Mint Emerald */
+      --danger: 244 63 94;
+      --lightBackground: 142 144 149;
+      --background-element: 142 144 149;
+      --background-selected: 46 49 53;
     }
   }
 }

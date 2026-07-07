@@ -1,11 +1,21 @@
 import { randomUUID } from 'expo-crypto';
 import { getDb } from './client';
 import type { Reminder, ReminderTime, ParsedTimeDraft } from '@/domain/reminders/types';
-import { scheduleTime, cancelTime } from '@/services/reminderScheduler';
+import { scheduleTime, cancelTime, toScheduleDraft } from '@/services/reminderScheduler';
+import { parseReminderInput } from '@/domain/reminders/reminderParser';
 
+function parseNotificationIds(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
+  } catch {
+    return [];
+  }
+}
 
-function mapRowToTime(row:any):ReminderTime{
-    return{
+function mapRowToTime(row: any): ReminderTime {
+    return {
         id: row.id,
         reminderId: row.reminder_id,
         time: row.time,
@@ -14,9 +24,8 @@ function mapRowToTime(row:any):ReminderTime{
         fireCount: row.fire_count,
         fireIntervalSeconds: row.fire_interval_seconds,
         repeatBurstDaily: row.repeat_burst_daily === 1,
-        notificationIds: row.notification_ids ? JSON.parse(row.notification_ids) : [],
-
-    }
+        notificationIds: parseNotificationIds(row.notification_ids),
+    };
 }
 
 export async function getAllReminders():Promise<Reminder[]>{
@@ -70,7 +79,8 @@ export async function createReminder(
 
 
     for (const draft of times) {
-    const notificationIds = await scheduleTime(label, draft);
+    const parsedLabel = parseReminderInput(label).label || label;
+    const notificationIds = draft.time ? await scheduleTime(parsedLabel, draft) : [];
     await db.runAsync(
         `INSERT INTO reminder_times
         (id, reminder_id, time, repeat, date, fire_count, fire_interval_seconds, repeat_burst_daily, notification_ids)
@@ -107,15 +117,15 @@ export async function updateReminder(
       [id]
     );
     for (const row of existingTimeRows) {
-      const ids: string[] = row.notification_ids ? JSON.parse(row.notification_ids) : [];
-      await cancelTime(ids);
+      await cancelTime(parseNotificationIds(row.notification_ids));
     }
   
     await db.runAsync('DELETE FROM reminder_times WHERE reminder_id = ?', [id]);
     await db.runAsync('UPDATE reminders SET label = ? WHERE id = ?', [label, id]);
   
     for (const draft of times) {
-      const notificationIds = await scheduleTime(label, draft);
+      const parsedLabel = parseReminderInput(label).label || label;
+      const notificationIds = draft.time ? await scheduleTime(parsedLabel, draft) : [];
       await db.runAsync(
         `INSERT INTO reminder_times
           (id, reminder_id, time, repeat, date, fire_count, fire_interval_seconds, repeat_burst_daily, notification_ids)
@@ -150,9 +160,12 @@ export async function toggleReminder(id: string, enabled: boolean): Promise<void
       }
     } else {
       for (const t of reminder.times) {
-        await cancelTime(t.notificationIds); // cancel what's already stored, THEN reschedule
+        await cancelTime(t.notificationIds);
+        const draft = toScheduleDraft(t);
+        if (!draft) continue;
 
-        const notificationIds = await scheduleTime(reminder.label, t);
+        const parsedLabel = parseReminderInput(reminder.label).label || reminder.label;
+        const notificationIds = await scheduleTime(parsedLabel, draft);
         await db.runAsync(
           'UPDATE reminder_times SET notification_ids = ? WHERE id = ?',
           [JSON.stringify(notificationIds), t.id]
@@ -177,9 +190,12 @@ export async function toggleReminder(id: string, enabled: boolean): Promise<void
     for (const reminder of reminders) {
       if (!reminder.enabled) continue;
       for (const t of reminder.times) {
-        await cancelTime(t.notificationIds); // cancel what's already stored, THEN reschedule
+        await cancelTime(t.notificationIds);
+        const draft = toScheduleDraft(t);
+        if (!draft) continue;
 
-        const notificationIds = await scheduleTime(reminder.label, t);
+        const parsedLabel = parseReminderInput(reminder.label).label || reminder.label;
+        const notificationIds = await scheduleTime(parsedLabel, draft);
         const db = await getDb();
         await db.runAsync(
           'UPDATE reminder_times SET notification_ids = ? WHERE id = ?',

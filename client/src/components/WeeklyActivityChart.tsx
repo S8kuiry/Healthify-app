@@ -1,7 +1,9 @@
 // src/components/WeeklyActivityChart.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { toLocalDateString, weekdayIndexMondayFirst } from '@/domain/date';
+import { useAppColors } from '@/hooks/use-app-colors';
+
 type DayPoint = { date: string; steps: number; calories: number };
 
 type Props = {
@@ -14,6 +16,9 @@ type DayStatus = 'empty' | 'partial' | 'success' | 'logged';
 
 const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 const TRACK_HEIGHT = 110;
+const DEFAULT_STEP_GOAL = 10_000;
+const DEFAULT_CALORIE_GOAL = 300;
+
 const STATUS_COLORS = {
   success: '#34D399',
   partial: '#EAB308',
@@ -24,10 +29,20 @@ const STATUS_COLORS = {
 function getTodayDateString() {
   return toLocalDateString();
 }
-function getDayStatus(value: number, goal?: number): DayStatus {
+
+function accentAlpha(accent: string, alpha: number): string {
+  const nums = accent.match(/[\d.]+/g);
+  if (!nums || nums.length < 3) return accent;
+  return `rgba(${nums[0]}, ${nums[1]}, ${nums[2]}, ${alpha})`;
+}
+
+function getDayStatus(value: number, scaleGoal: number, hasUserGoal: boolean): DayStatus {
   if (value === 0) return 'empty';
-  if (!goal || goal <= 0) return 'logged';
-  if (value >= goal) return 'success';
+  if (!hasUserGoal) {
+    if (value >= scaleGoal) return 'success';
+    return 'partial';
+  }
+  if (value >= scaleGoal) return 'success';
   return 'partial';
 }
 
@@ -46,9 +61,15 @@ function barFillClass(status: DayStatus, isToday: boolean): string {
 
 export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Props) {
   const [metric, setMetric] = useState<'steps' | 'calories'>('steps');
+  const colors = useAppColors();
   const today = getTodayDateString();
-  const goal = metric === 'steps' ? stepGoal : calorieGoal;
-  const hasGoal = (goal ?? 0) > 0;
+  const userGoal = metric === 'steps' ? stepGoal : calorieGoal;
+  const hasUserGoal = (userGoal ?? 0) > 0;
+  const scaleGoal = hasUserGoal
+    ? userGoal!
+    : metric === 'steps'
+      ? DEFAULT_STEP_GOAL
+      : DEFAULT_CALORIE_GOAL;
 
   const values = data.map((d) => d[metric]);
   const total = values.reduce((a, b) => a + b, 0);
@@ -56,12 +77,6 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
   const avg = daysLogged > 0 ? Math.round(total / daysLogged) : 0;
   const best = Math.max(...values, 0);
   const hasAnyData = total > 0;
-
-  const maxValue = useMemo(() => {
-    return Math.max(...values, goal ?? 0, 1);
-  }, [values, goal]);
-
-  const goalLinePct = goal && goal > 0 ? Math.min(100, (goal / maxValue) * 100) : null;
 
   return (
     <View className="bg-cardBackground rounded-3xl p-5 pb-4 mb-5 shadow-sm">
@@ -75,14 +90,14 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
           </Text>
         </View>
 
-        <View className="flex-row bg-backgroundElement/50 rounded-3xl p-0.5">
+        <View className="flex-row bg-backgroundElement/30 rounded-3xl p-0.5">
           <Pressable
             onPress={() => setMetric('steps')}
             className={`px-3 py-1 rounded-3xl ${metric === 'steps' ? 'bg-accent' : ''}`}
           >
             <Text
               className={`text-[10px] font-bold tracking-wide uppercase ${
-                metric === 'steps' ? 'text-background' : 'text-textMuted'
+                metric === 'steps' ? 'text-cardBackground' : 'text-textPrimary'
               }`}
             >
               Steps
@@ -94,7 +109,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
           >
             <Text
               className={`text-[10px] font-bold tracking-wide uppercase ${
-                metric === 'calories' ? 'text-background' : 'text-textMuted'
+                metric === 'calories' ? 'text-cardBackground' : 'text-textPrimary'
               }`}
             >
               Energy
@@ -132,9 +147,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
             Best Day
           </Text>
           <Text
-            className={`text-base font-black tracking-tight ${
-              hasGoal ? 'text-accent' : 'text-accent'
-            }`}
+            className="text-base font-black tracking-tight text-accent"
             style={{ fontVariant: ['tabular-nums'] }}
           >
             {best.toLocaleString()}
@@ -142,57 +155,83 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
         </View>
       </View>
 
-      {/* Bar tracks — fixed height only for bars */}
+      {/* Bar tracks */}
       <View className="flex-row items-end justify-between gap-0.5" style={{ height: TRACK_HEIGHT }}>
         {data.map((day) => {
           const value = day[metric];
-          const status = getDayStatus(value, goal);
-          const pct = Math.max(value > 0 ? 8 : 0, (value / maxValue) * 100);
-          const stripeColor = STATUS_COLORS[status];
+          const isToday = day.date === today;
+          const showPlaceholder = isToday && value === 0;
+          const showBar = value > 0;
+          const showTrack = showPlaceholder || showBar;
 
+          const status = getDayStatus(value, scaleGoal, hasUserGoal);
+          const barPct = showBar
+            ? Math.min(100, Math.max(4, (value / scaleGoal) * 100))
+            : 0;
+
+          const stripeColor = showPlaceholder
+            ? hasUserGoal
+              ? STATUS_COLORS.empty
+              : accentAlpha(colors.accent, 0.4)
+            : !hasUserGoal
+              ? accentAlpha(colors.accent, 0.55)
+              : STATUS_COLORS[status];
+
+              const trackClass = showPlaceholder
+              ? hasUserGoal
+                ? 'bg-transparent'   // or '' — no track bg for today placeholder
+                : 'bg-accent/12'
+              : hasUserGoal
+                ? 'bg-transparent'   // no grey track when goal is set
+                : 'bg-backgroundElement/40';
           return (
             <View key={day.date} className="flex-1 flex-row items-end justify-center px-0.5">
-              {/* Goal status stripe */}
-              <View
-                className="rounded-2xl mr-0.5"
-                style={{
-                  width: 2,
-                  height: status === 'empty' ? 12 : TRACK_HEIGHT,
-                  backgroundColor: stripeColor,
-                  alignSelf: status === 'empty' ? 'flex-end' : 'stretch',
-                  marginBottom: status === 'empty' ? 0 : 0,
-                }}
-              />
+              {showTrack && (
+                <View
+                  className="rounded-2xl mr-0.5"
+                  style={{
+                    width: 2,
+                    height: showPlaceholder ? 12 : TRACK_HEIGHT,
+                    backgroundColor: stripeColor,
+                    alignSelf: showPlaceholder ? 'flex-end' : 'stretch',
+                  }}
+                />
+              )}
 
-              <View
-                className="flex-1 items-center justify-end overflow-hidden rounded-t-2xl bg-backgroundElement"
-                style={{ height: TRACK_HEIGHT }}
-              >
-                {goalLinePct !== null && (
-                  <View
-                    className="absolute w-full border-t border-dashed border-textMuted"
-                    style={{ bottom: `${goalLinePct}%`, left: 0 }}
-                  />
-                )}
+              {showTrack ? (
+                <View
+                  className={`flex-1 items-center justify-end overflow-hidden rounded-t-2xl ${trackClass}`}
+                  style={{ height: TRACK_HEIGHT }}
+                >
+                  {hasUserGoal && (
+                    <View
+                      className="absolute w-full border-t border-dashed border-textMuted"
+                      style={{ top: 0, left: 0 }}
+                    />
+                  )}
 
-                {value > 0 ? (
-                  <View
-                    className={`rounded-t-md ${barFillClass(status, day.date === today)}`}
-                    style={{ width: '72%', height: `${pct}%` }}
-                  />
-                ) : (
-                  <View
-                    className="rounded-3xl bg-backgroundElement"
-                    style={{ width: 6, height: 6, marginBottom: 4 }}
-                  />
-                )}
-              </View>
+                  {showBar && (
+                    <View
+                      className={`rounded-t-md ${
+                        !hasUserGoal
+                          ? isToday
+                            ? 'bg-accent'
+                            : 'bg-accent/80'
+                          : barFillClass(status, isToday)
+                      }`}
+                      style={{ width: '72%', height: `${barPct}%` }}
+                    />
+                  )}
+                </View>
+              ) : (
+                <View style={{ height: TRACK_HEIGHT, flex: 1 }} />
+              )}
             </View>
           );
         })}
       </View>
 
-      {/* Day labels — separate row so margins never clip */}
+      {/* Day labels */}
       <View className="flex-row justify-between mt-2">
         {data.map((day) => {
           const weekdayIdx = weekdayIndexMondayFirst(day.date);

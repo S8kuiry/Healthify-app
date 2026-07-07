@@ -3,7 +3,7 @@ export type RepeatMode = 'daily' | 'once';
 export type ReminderTime = {
     id:string;
     reminderId:string;
-    time: string;          // "HH:mm", 24-hour
+    time: string | null;          // "HH:mm", 24-hour
     repeat: RepeatMode;
     date: string | null;   // only set when repeat === 'once'
     fireCount: number;
@@ -22,7 +22,7 @@ export type Reminder = {
 
 // What a single time looks like BEFORE it's saved (no id, no notificationIds yet)
 export type ParsedTimeDraft = {
-    time: string;
+    time: string | null;
     repeat: RepeatMode;
     date: string | null;
     fireCount: number;
@@ -37,3 +37,5 @@ export type ParsedReminderDraft = {
     times: ParsedTimeDraft[];
     needsEventClarification: boolean;
   };
+
+
