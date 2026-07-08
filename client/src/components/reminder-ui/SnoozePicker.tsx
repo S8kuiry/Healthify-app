@@ -20,7 +20,7 @@ export default function SnoozePicker({ onSnooze }: { onSnooze: (minutes: number)
         onPress={() => setOpen(true)}
         className="flex-row items-center gap-1 bg-cardBackground border border-accent border-dashed px-2.5 py-1.5 rounded-xl active:opacity-75"
       >
-        <Feather name="bell" size={10} className={colors.accent} />
+        <Feather name="bell" size={10} color='rgb(5,150,105)' />
         <Text className="text-textSecondary text-[11px] font-semibold ml-1.5 tracking-wide">
           Snooze
         </Text>

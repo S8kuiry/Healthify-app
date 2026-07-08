@@ -1,4 +1,5 @@
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
 import type { ParsedTimeDraft, ReminderTime } from '@/domain/reminders/types';
 
 const CHANNEL_ID = 'reminders';
@@ -13,6 +14,7 @@ export function toScheduleDraft(row: ParsedTimeDraft | ReminderTime): ParsedTime
     fireCount: row.fireCount,
     fireIntervalSeconds: row.fireIntervalSeconds,
     repeatBurstDaily: row.repeatBurstDaily,
+    meridiemAmbiguous: false,
   };
 }
 
@@ -25,6 +27,24 @@ export async function ensureReminderChannel() {
     }
 }
 
+
+/** Ensure burst settings are consistent before scheduling. */
+function normalizeScheduleRow(row: ParsedTimeDraft): ParsedTimeDraft {
+  const fireCount = Math.max(1, Math.min(5, row.fireCount ?? 1));
+  const intervalSeconds = Math.max(1, row.fireIntervalSeconds ?? 60);
+
+  if (row.repeat === 'daily' && fireCount > 1) {
+    return {
+      ...row,
+      fireCount,
+      fireIntervalSeconds: intervalSeconds,
+      // Default ON: all pops repeat daily unless user explicitly turned it off.
+      repeatBurstDaily: row.repeatBurstDaily !== false,
+    };
+  }
+
+  return { ...row, fireCount, fireIntervalSeconds: intervalSeconds };
+}
 
 function nextTriggerDate(time: string, date: string | null): Date {
   const [hours, minutes] = time.split(':').map(Number);
@@ -47,6 +67,26 @@ function nextTriggerDate(time: string, date: string | null): Date {
   return trigger;
 }
 
+function buildRepeatingTrigger(hour: number, minute: number): Notifications.NotificationTriggerInput {
+  // CALENDAR is iOS-only; DAILY works on both Android and iOS.
+  if (Platform.OS === 'ios') {
+    return {
+      type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
+      hour,
+      minute,
+      repeats: true,
+      channelId: CHANNEL_ID,
+    };
+  }
+
+  return {
+    type: Notifications.SchedulableTriggerInputTypes.DAILY,
+    hour,
+    minute,
+    channelId: CHANNEL_ID,
+  };
+}
+
 
 export async function scheduleTime(
     label: string,
@@ -54,12 +94,13 @@ export async function scheduleTime(
   ): Promise<string[]> {
     if (!row.time) return [];
 
+    const normalized = normalizeScheduleRow(row);
     const ids: string[] = [];
-    const baseTrigger = nextTriggerDate(row.time, row.date);
-    const isDaily = row.repeat === 'daily';
-    const burstRepeatsDaily = isDaily && row.repeatBurstDaily;
-    const fireCount = Math.max(1, row.fireCount ?? 1);
-    const intervalSeconds = Math.max(1, row.fireIntervalSeconds ?? 60);
+    const baseTrigger = nextTriggerDate(normalized.time!, normalized.date);
+    const isDaily = normalized.repeat === 'daily';
+    const burstRepeatsDaily = isDaily && normalized.repeatBurstDaily;
+    const fireCount = normalized.fireCount;
+    const intervalSeconds = normalized.fireIntervalSeconds;
   
     for (let i = 0; i < fireCount; i++) {
       const fireDate = new Date(baseTrigger.getTime() + i * intervalSeconds * 1000);
@@ -74,13 +115,7 @@ export async function scheduleTime(
       const id = await Notifications.scheduleNotificationAsync({
         content: { title: 'HealthApp', body: label },
         trigger: thisFireRepeatsDaily
-          ? {
-              type: Notifications.SchedulableTriggerInputTypes.CALENDAR,
-              hour: fireDate.getHours(),
-              minute: fireDate.getMinutes(),
-              repeats: true,
-              channelId: CHANNEL_ID,
-            }
+          ? buildRepeatingTrigger(fireDate.getHours(), fireDate.getMinutes())
           : {
               type: Notifications.SchedulableTriggerInputTypes.DATE,
               date: fireDate,

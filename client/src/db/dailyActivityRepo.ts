@@ -106,3 +106,4 @@ export async function deleteDailyActivity(date: string): Promise<void> {
     const db = await getDb();
     await db.runAsync(`DELETE FROM daily_activity WHERE date = ?;`, [date]);
 }
+

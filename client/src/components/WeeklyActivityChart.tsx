@@ -53,9 +53,9 @@ function barFillClass(status: DayStatus, isToday: boolean): string {
     case 'partial':
       return isToday ? 'bg-[#EAB308]' : 'bg-[#EAB308]/70';
     case 'logged':
-      return isToday ? 'bg-slate-400' : 'bg-slate-500';
+      return isToday ? 'bg-accent/20' : 'bg-accent/40';
     default:
-      return 'bg-backgroundElement/30';
+      return '';
   }
 }
 
@@ -205,7 +205,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
                 >
                   {hasUserGoal && (
                     <View
-                      className="absolute w-full border-t border-dashed border-textMuted"
+                      className="absolute w-full "
                       style={{ top: 0, left: 0 }}
                     />
                   )}

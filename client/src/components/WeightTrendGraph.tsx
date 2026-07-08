@@ -1,6 +1,9 @@
 import React, { useRef, useMemo } from 'react';
 import { View, Text, ScrollView, useColorScheme } from 'react-native';
-import Svg, { Polyline, Circle, Line, Rect } from 'react-native-svg';
+import Svg, { Rect, Line, Polyline, Circle } from 'react-native-svg';
+import { Feather } from '@expo/vector-icons';
+import type { DailyActivity } from '@/db/dailyActivityRepo';
+import { useAppColors } from '@/hooks/use-app-colors';
 
 export interface WeightHistoryEntry {
   id: string;
@@ -10,104 +13,146 @@ export interface WeightHistoryEntry {
 
 interface WeightTrendGraphProps {
   weightHistory: WeightHistoryEntry[];
+  monthActivity: DailyActivity[]; // from getMonthActivity('YYYY-MM')
 }
 
-const COLUMN_WIDTH = 74;
-const H_PAD = 12;
-const PLOT_HEIGHT = 110;
-const TOP_SPACE = 36;
-const BOTTOM_SPACE = 44;
-const TOTAL_HEIGHT = TOP_SPACE + PLOT_HEIGHT + BOTTOM_SPACE;
-const GRID_ROWS = 4;
+const BAR_WIDTH = 20;
+const BAR_GAP = 14;
+const H_PAD = 16;
+const CHART_HEIGHT = 130;
+const CAL_LABEL_SPACE = 16;
+const TOP_PAD = 4;
 
-const formatGraphDate = (dateStr: string) => {
-  try {
-    const [, month, day] = dateStr.split('-');
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${day} ${months[parseInt(month, 10) - 1] || ''}`;
-  } catch {
-    return dateStr;
-  }
-};
+const monthLabel = () => new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
-function weightToY(weight: number, min: number, max: number): number {
-  if (max === min) return PLOT_HEIGHT / 2;
-  const ratio = (weight - min) / (max - min);
-  return PLOT_HEIGHT - ratio * PLOT_HEIGHT;
-}
-
-export default function WeightTrendGraph({ weightHistory }: WeightTrendGraphProps) {
+export default function WeightTrendGraph({ weightHistory, monthActivity }: WeightTrendGraphProps) {
   const scrollRef = useRef<ScrollView>(null);
+  const colors = useAppColors();
   const colorScheme = useColorScheme();
   const accent = colorScheme === 'dark' ? '#34D399' : '#059669';
-  const dotFill = colorScheme === 'dark' ? '#161E31' : '#FFFFFF';
+  const weightLine = colorScheme === 'dark' ? '#F472B6' : '#DB2777';
+  const barTrack = colorScheme === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(71, 85, 105, 0.08)';
   const gridColor = colorScheme === 'dark' ? '#94A3B8' : '#64748B';
-  const plotFill = colorScheme === 'dark' ? 'rgba(148, 163, 184, 0.06)' : 'rgba(71, 85, 105, 0.05)';
+  const dotFill = colorScheme === 'dark' ? '#161E31' : '#FFFFFF';
 
-  const graphData = useMemo(() => {
-    const sorted = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
-    const weights = sorted.map((e) => e.weightKg);
+  const stats = useMemo(() => {
+    const rows = [...monthActivity].sort((a, b) => a.date.localeCompare(b.date));
 
-    const min = weights.length > 0 ? Math.min(...weights) : 0;
-    const max = weights.length > 0 ? Math.max(...weights) : 0;
+    const totalSteps = rows.reduce((sum, r) => sum + r.steps, 0);
+    const totalCalories = rows.reduce((sum, r) => sum + r.calories, 0);
+    const activeDays = rows.filter((r) => r.steps > 0).length;
+    const bestDay = rows.reduce(
+      (best, r) => (r.steps > (best?.steps ?? 0) ? r : best),
+      null as DailyActivity | null
+    );
+    const maxSteps = Math.max(...rows.map((r) => r.steps), 1);
 
-    const nodes = sorted.map((entry, index) => {
-      const y = weightToY(entry.weightKg, min, max) + TOP_SPACE;
-      const x = H_PAD + index * COLUMN_WIDTH + COLUMN_WIDTH / 2;
+    const monthPrefix = rows[0]?.date.slice(0, 7);
+    const weightByDate = new Map(weightHistory.map((w) => [w.date, w.weightKg]));
+    const monthWeights = monthPrefix
+      ? weightHistory.filter((w) => w.date.startsWith(monthPrefix)).sort((a, b) => a.date.localeCompare(b.date))
+      : [];
+    const weightChange =
+      monthWeights.length >= 2
+        ? monthWeights[monthWeights.length - 1].weightKg - monthWeights[0].weightKg
+        : null;
 
-      let changeText = '—';
-      let changeType: 'up' | 'down' | 'flat' = 'flat';
+    const weightsInMonth = rows.map((r) => weightByDate.get(r.date)).filter((w): w is number => w !== undefined);
+    const minWeight = weightsInMonth.length ? Math.min(...weightsInMonth) : 0;
+    const maxWeight = weightsInMonth.length ? Math.max(...weightsInMonth) : 0;
 
-      if (index > 0) {
-        const diff = entry.weightKg - sorted[index - 1].weightKg;
-        if (diff > 0) {
-          changeText = `▲ ${diff.toFixed(1)}`;
-          changeType = 'up';
-        } else if (diff < 0) {
-          changeText = `▼ ${Math.abs(diff).toFixed(1)}`;
-          changeType = 'down';
-        }
-      }
+    return { rows, totalSteps, totalCalories, activeDays, bestDay, maxSteps, weightChange, weightByDate, minWeight, maxWeight };
+  }, [monthActivity, weightHistory]);
 
-      return {
-        ...entry,
-        x,
-        y,
-        changeText,
-        changeType,
-      };
-    });
+  const chartWidth = Math.max(stats.rows.length * (BAR_WIDTH + BAR_GAP) + H_PAD * 2, 220);
 
-    const polylinePoints = nodes.map((n) => `${n.x},${n.y}`).join(' ');
-    const contentWidth = Math.max(nodes.length * COLUMN_WIDTH + H_PAD * 2, 200);
-
-    return { nodes, min, max, polylinePoints, contentWidth };
-  }, [weightHistory]);
+  // weight line points — only for days that actually have a weight entry
+  const weightPoints = useMemo(() => {
+    const range = stats.maxWeight - stats.minWeight;
+    return stats.rows
+      .map((r, i) => {
+        const w = stats.weightByDate.get(r.date);
+        if (w === undefined) return null;
+        const x = H_PAD + i * (BAR_WIDTH + BAR_GAP) + BAR_WIDTH / 2;
+        const ratio = range === 0 ? 0.5 : (w - stats.minWeight) / range;
+        const y = TOP_PAD + CAL_LABEL_SPACE + (1 - ratio) * (CHART_HEIGHT - CAL_LABEL_SPACE - TOP_PAD - 10) + 10;
+        return { x, y, w };
+      })
+      .filter((p): p is { x: number; y: number; w: number } => p !== null);
+  }, [stats]);
 
   return (
-    <View className="mb-2 ">
+    <View className="mb-2">
       <View className="flex-row justify-between items-baseline mb-3 px-1">
-        <Text className="text-textPrimary text-xs font-black tracking-tight uppercase">Weight Trend</Text>
-        {/* <Text className="text-textMuted text-[10px] font-bold tracking-wider uppercase">
-          Last {graphData.nodes.length} Entries
-        </Text> */}
+        <Text className="text-textPrimary text-xs font-black tracking-tight uppercase">{monthLabel()}</Text>
+        <Text className="text-textMuted text-[10px] font-bold tracking-wider uppercase">
+          {stats.activeDays} active days
+        </Text>
       </View>
 
-      <View className={` ${graphData.nodes.length === 0 ? ' h-[170px]' : ' h-[210px]'}   rounded-3xl bg-cardBackground  py-4 px-4 shadow-sm relative overflow-hidden`}>
-        {graphData.nodes.length === 0 ? (
-          <View className="flex-1 items-center justify-center">
-            <View className="h-16 w-16 rounded-full border-[3px] border-backgroundElement/50 items-center justify-center mb-3">
-              <View className="h-10 w-10 rounded-full border-[3px] border-accent/30 items-center justify-center" />
+      <View
+        className="rounded-3xl bg-cardBackground overflow-hidden"
+        style={{
+          shadowColor: '#0F172A',
+          shadowOffset: { width: 0, height: 6 },
+          shadowOpacity: 0.06,
+          shadowRadius: 14,
+          elevation: 2,
+        }}
+      >
+        {/* Slim stat header, inside the same card */}
+        <View className="flex-row px-4 pt-4 pb-3">
+          <View className="flex-1 items-start">
+            <View className="flex-row items-center gap-1 mb-1">
+              <Feather name="trending-up" size={11} color={weightLine} />
+              <Text className="text-textSecondary text-[9px] font-bold tracking-widest uppercase mb-1 ">Steps</Text>
             </View>
-
-
-
-            <Text className="text-textPrimary text-xs font-bold tracking-tight mb-1">
-              No weight entries yet. Add logs below to see your trend.
+            <Text className="text-textPrimary text-base font-black tracking-tight" style={{ fontVariant: ['tabular-nums'] }}>
+              {stats.totalSteps.toLocaleString()}
             </Text>
-            <Text className="text-textMuted text-[11px] font-medium text-center px-4 leading-relaxed">
-               Add your weight in the profile interface to see your trend.
+          </View>
+
+          <View className="w-[1px] bg-backgroundElement/70 mx-3" />
+
+          <View className="flex-1 items-start">
+            <View className="flex-row items-center gap-1 mb-1">
+              <Feather name="zap" size={11} color={weightLine} />
+              <Text className="text-textSecondary text-[9px] font-bold tracking-widest uppercase mb-1">Kcal</Text>
+            </View>
+            <Text className="text-textPrimary text-base font-black tracking-tight " style={{ fontVariant: ['tabular-nums'] }}>
+              {stats.totalCalories.toLocaleString()}
             </Text>
+      
+          </View>
+
+          <View className="w-[1px] bg-backgroundElement/70 mx-3" />
+
+          <View className="flex-1 items-start">
+            <View className="flex-row items-center gap-1 mb-1">
+              <Feather name="activity" size={11} color={weightLine} />
+              <Text className="text-textSecondary text-[9px] font-bold tracking-widest uppercase mb-1">Weight</Text>
+            </View>
+            {stats.weightChange === null ? (
+              <Text className="text-textMuted text-sm font-bold">—</Text>
+            ) : (
+              <Text
+                className="text-base font-black tracking-tight"
+                style={{ fontVariant: ['tabular-nums'], color: stats.weightChange > 0 ? '#DC2626' : stats.weightChange < 0 ? accent : undefined }}
+              >
+                {stats.weightChange > 0 ? '+' : ''}
+                {stats.weightChange.toFixed(1)}
+                <Text className="text-xs"> kg</Text>
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View style={{ height: 1, backgroundColor: 'rgba(0,0,0,0.05)' }} />
+
+        {/* Combined bar + line chart */}
+        {stats.rows.length === 0 ? (
+          <View className="h-[150px] items-center justify-center">
+            <Text className="text-textMuted text-[11px] font-medium">No activity logged yet this month.</Text>
           </View>
         ) : (
           <ScrollView
@@ -115,152 +160,99 @@ export default function WeightTrendGraph({ weightHistory }: WeightTrendGraphProp
             horizontal
             showsHorizontalScrollIndicator={false}
             onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
-            contentContainerStyle={{ paddingVertical: 4 }}
+            contentContainerStyle={{ paddingTop: 12, paddingBottom: 6 }}
           >
-            <View style={{ width: graphData.contentWidth, height: TOTAL_HEIGHT }}>
-              <Svg
-                width={graphData.contentWidth}
-                height={TOP_SPACE + PLOT_HEIGHT}
-                style={{ position: 'absolute', top: 0, left: 0 }}
-              >
-                {/* Plot zone background + grid */}
-                <Rect
-                  x={H_PAD}
-                  y={TOP_SPACE}
-                  width={graphData.contentWidth - H_PAD * 2}
-                  height={PLOT_HEIGHT}
-                  rx={10}
-                  fill={plotFill}
+            <View style={{ width: chartWidth }}>
+              <Svg width={chartWidth} height={CHART_HEIGHT}>
+                <Line
+                  x1={H_PAD}
+                  y1={CHART_HEIGHT - 20}
+                  x2={chartWidth - H_PAD}
+                  y2={CHART_HEIGHT - 20}
+                  stroke={gridColor}
+                  strokeWidth={1}
+                  opacity={0.15}
                 />
 
-                {Array.from({ length: GRID_ROWS + 1 }, (_, i) => {
-                  const y = TOP_SPACE + (PLOT_HEIGHT / GRID_ROWS) * i;
-                  const isBaseline = i === GRID_ROWS;
+                {stats.rows.map((r, i) => {
+                  const barMaxHeight = CHART_HEIGHT - 20 - CAL_LABEL_SPACE - TOP_PAD;
+                  const barHeight = Math.max((r.steps / stats.maxSteps) * barMaxHeight, 3);
+                  const x = H_PAD + i * (BAR_WIDTH + BAR_GAP);
+                  const y = CHART_HEIGHT - 20 - barHeight;
+                  const isBest = stats.bestDay?.date === r.date && r.steps > 0;
+
                   return (
-                    <Line
-                      key={`grid-h-${i}`}
-                      x1={H_PAD}
-                      y1={y}
-                      x2={graphData.contentWidth - H_PAD}
-                      y2={y}
-                      stroke={gridColor}
-                      strokeWidth={isBaseline ? 1.25 : 1}
-                      opacity={isBaseline ? 0.35 : 0.14}
-                    />
+                    <React.Fragment key={r.date}>
+                      <Rect
+                        x={x}
+                        y={TOP_PAD + CAL_LABEL_SPACE}
+                        width={BAR_WIDTH}
+                        height={barMaxHeight}
+                        rx={6}
+                        fill={barTrack}
+                      />
+                      <Rect x={x} y={y} width={BAR_WIDTH} height={barHeight} rx={6} fill={accent} opacity={isBest ? 1 : 0.55} />
+                    </React.Fragment>
                   );
                 })}
 
-                {graphData.nodes.map((node) => (
-                  <Line
-                    key={`grid-v-${node.id}`}
-                    x1={node.x}
-                    y1={TOP_SPACE}
-                    x2={node.x}
-                    y2={TOP_SPACE + PLOT_HEIGHT}
-                    stroke={gridColor}
-                    strokeWidth={1}
-                    opacity={0.1}
-                  />
-                ))}
-
-                <Line
-                  x1={H_PAD}
-                  y1={TOP_SPACE}
-                  x2={H_PAD}
-                  y2={TOP_SPACE + PLOT_HEIGHT}
-                  stroke={gridColor}
-                  strokeWidth={1}
-                  opacity={0.2}
-                />
-                <Line
-                  x1={graphData.contentWidth - H_PAD}
-                  y1={TOP_SPACE}
-                  x2={graphData.contentWidth - H_PAD}
-                  y2={TOP_SPACE + PLOT_HEIGHT}
-                  stroke={gridColor}
-                  strokeWidth={1}
-                  opacity={0.2}
-                />
-
-                {graphData.nodes.length > 1 && (
+                {weightPoints.length > 1 && (
                   <Polyline
-                    points={graphData.polylinePoints}
+                    points={weightPoints.map((p) => `${p.x},${p.y}`).join(' ')}
                     fill="none"
-                    stroke={accent}
-                    strokeWidth={2.5}
-                    strokeLinejoin="round"
+                    stroke={weightLine}
+                    strokeWidth={2}
+                    strokeDasharray="4 3"
                     strokeLinecap="round"
                   />
                 )}
 
-                {graphData.nodes.map((node) => (
-                  <Circle
-                    key={`dot-${node.id}`}
-                    cx={node.x}
-                    cy={node.y}
-                    r={5}
-                    fill={dotFill}
-                    stroke={accent}
-                    strokeWidth={2}
-                  />
+                {weightPoints.map((p, i) => (
+                  <Circle key={`w-${i}`} cx={p.x} cy={p.y} r={4} fill={dotFill} stroke={weightLine} strokeWidth={2} />
                 ))}
-
               </Svg>
 
-              {graphData.nodes.map((entry) => {
-                const isMax = entry.weightKg === graphData.max && graphData.nodes.length > 1;
-                const dotTop = entry.y;
+              {/* Calorie labels above each bar */}
+              {stats.rows.map((r, i) => (
+                <Text
+                  key={`cal-${r.date}`}
+                  style={{
+                    position: 'absolute',
+                    left: H_PAD + i * (BAR_WIDTH + BAR_GAP) - 10,
+                    top: 0,
+                    width: BAR_WIDTH + 20,
+                    textAlign: 'center',
+                  }}
+                  className="text-textMuted text-[8px] font-bold"
+                  numberOfLines={1}
+                >
+                  {r.calories > 0 ? r.calories : ''}
+                </Text>
+              ))}
 
-                return (
-                  <View key={`label-${entry.id}`}>
-                    <Text
-                      style={{
-                        position: 'absolute',
-                        left: entry.x - 28,
-                        top: dotTop - 28,
-                        width: 56,
-                        textAlign: 'center',
-                      }}
-                      className={`text-[11px] font-black tracking-tight ${isMax ? 'text-accent' : 'text-textPrimary'}`}
-                    >
-                      {entry.weightKg}
-                    </Text>
-
-                    <Text
-                      style={{
-                        position: 'absolute',
-                        left: entry.x - 28,
-                        top: dotTop - 40,
-                        width: 56,
-                        textAlign: 'center',
-                      }}
-                      className={`text-[8px] font-black tracking-widest uppercase ${entry.changeType === 'up'
-                          ? 'text-danger'
-                          : entry.changeType === 'down'
-                            ? 'text-accent'
-                            : 'text-textMuted'
-                        }`}
-                    >
-                      {entry.changeText}
-                    </Text>
-
-                    <Text
-                      style={{
-                        position: 'absolute',
-                        left: entry.x - 34,
-                        top: TOP_SPACE + PLOT_HEIGHT + 10,
-                        width: 68,
-                        textAlign: 'center',
-                      }}
-                      className="text-textSecondary text-[9px] font-black tracking-tight uppercase"
-                    >
-                      {formatGraphDate(entry.date)}
-                    </Text>
-                  </View>
-                );
-              })}
+              {/* Day labels below chart */}
+              <View style={{ flexDirection: 'row', paddingLeft: H_PAD, marginTop: 4 }}>
+                {stats.rows.map((r) => (
+                  <Text
+                    key={`d-${r.date}`}
+                    className="text-textMuted text-[8px] font-bold text-center"
+                    style={{ width: BAR_WIDTH + BAR_GAP }}
+                  >
+                    {r.date.split('-')[2]}
+                  </Text>
+                ))}
+              </View>
             </View>
           </ScrollView>
+        )}
+
+        {stats.bestDay && stats.bestDay.steps > 0 && (
+          <View className="flex-row items-center gap-1.5 px-4 pb-4 pt-1">
+            <Feather name="award" size={12} color={accent} />
+            <Text className="text-textSecondary text-[11px] font-semibold">
+              Best day: {stats.bestDay.steps.toLocaleString()} steps on {stats.bestDay.date.split('-')[2]}
+            </Text>
+          </View>
         )}
       </View>
     </View>

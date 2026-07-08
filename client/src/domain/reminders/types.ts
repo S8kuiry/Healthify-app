@@ -28,6 +28,7 @@ export type ParsedTimeDraft = {
     fireCount: number;
     fireIntervalSeconds: number;
     repeatBurstDaily: boolean; // only meaningful when repeat === 'daily' && fireCount > 1
+    meridiemAmbiguous: boolean; // true when chrono guessed AM/PM rather than being told
 
 };
 

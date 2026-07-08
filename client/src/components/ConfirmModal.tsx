@@ -34,7 +34,7 @@ export default function ConfirmModal({
               onPress={onClose}
               className="flex flex-1 rounded-3xl border border-textSecondary border-dashed py-2 items-center justify-center bg-backgroundElement active:opacity-85"
             >
-              <Text className="text-textSecondary text-xs font-black tracking-wide uppercase">Cancel</Text>
+              <Text className="text-textPrimary text-xs font-black tracking-wide uppercase">Cancel</Text>
             </Pressable>
 
             <Pressable

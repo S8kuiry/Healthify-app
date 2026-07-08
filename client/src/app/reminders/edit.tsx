@@ -2,7 +2,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import ReminderDraftEditor from '@/components/reminder-ui/ReminderDraftEditor';
-import { parseReminderInput } from '@/domain/reminders/reminderParser';
+import { parseReminderInput, ensureParsedTimeDraft } from '@/domain/reminders/reminderParser';
 import { getReminderById, createReminder, updateReminder } from '@/db/reminderRepo';
 import type { ParsedReminderDraft } from '@/domain/reminders/types';
 import ScreenContainer from '@/components/ScreenContainer';
@@ -10,7 +10,7 @@ import { useReminders } from '@/context/reminderContext';
 
 const BLANK_DRAFT: ParsedReminderDraft = {
   label: '',
-  times: [{ time: null, repeat: 'once', date: null, fireCount: 1, fireIntervalSeconds: 60, repeatBurstDaily: true }],
+  times: [ensureParsedTimeDraft({})],
   needsEventClarification: false,
 };
 
@@ -27,16 +27,26 @@ export default function EditReminderScreen() {
         if (!reminder) { router.back(); return; }
         setDraft({
           label: reminder.label,
-          times: reminder.times.map((t) => ({
-            time: t.time, repeat: t.repeat, date: t.date,
-            fireCount: t.fireCount, fireIntervalSeconds: t.fireIntervalSeconds,
-            repeatBurstDaily: t.repeatBurstDaily,
-          })),
+          times: reminder.times.map((t) =>
+            ensureParsedTimeDraft({
+              time: t.time,
+              repeat: t.repeat,
+              date: t.date,
+              fireCount: t.fireCount,
+              fireIntervalSeconds: t.fireIntervalSeconds,
+              repeatBurstDaily: t.repeatBurstDaily,
+              meridiemAmbiguous: false,
+            }),
+          ),
           needsEventClarification: false,
         });
       });
     } else if (text) {
-      setDraft(parseReminderInput(text));
+      const parsed = parseReminderInput(text);
+      setDraft({
+        ...parsed,
+        times: parsed.times.map(ensureParsedTimeDraft),
+      });
     } else {
       setDraft(BLANK_DRAFT);
     }
@@ -48,7 +58,7 @@ export default function EditReminderScreen() {
     } else {
       await createReminder(finalDraft.label, finalDraft.times);
     }
-    router.back();
+    router.push('/(tabs)/reminders');
   }
 
   if (!draft) {

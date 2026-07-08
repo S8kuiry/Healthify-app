@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import ScreenContainer from '@/components/ScreenContainer';
@@ -8,11 +8,13 @@ import AddWeightModal from '@/components/AddWeightModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import type { WeightEntry } from '@/context/profileContext';
 import WeightTrendGraph from '@/components/WeightTrendGraph';
+import { DailyActivity, getMonthActivity } from '@/db/dailyActivityRepo';
 
 
 
 export default function ProfileScreen() {
   const { profile, weightHistory, updateWeight, deleteWeight } = useProfile();
+  const [monthActivity, setMonthActivity] = useState<DailyActivity[]>([]);
   const [showAddWeightModal, setShowAddWeightModal] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<WeightEntry | null>(null);
   const router = useRouter();
@@ -28,6 +30,12 @@ export default function ProfileScreen() {
   const sortedHistory = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
   const latestEntries = sortedHistory.slice(-7);
 
+
+  useEffect(() => {
+    const yearMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+    getMonthActivity(yearMonth).then(setMonthActivity);
+  }, []);
+  
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -99,7 +107,7 @@ export default function ProfileScreen() {
           {/* Weight Trend Graph Section */}
           <View className="mb-6">
            
-            <WeightTrendGraph weightHistory={weightHistory} />
+          <WeightTrendGraph weightHistory={weightHistory} monthActivity={monthActivity} />
 
           </View>
 
