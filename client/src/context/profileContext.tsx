@@ -4,7 +4,6 @@ import { getProfile, upsertProfile } from '../db/profileRepo';
 import { getAllWeightEntries, upsertWeightEntry, upsertWeightEntryForToday, deleteWeightEntry } from '../db/weightRepo';
 import { updateGoals as updateGoalsRepo } from '../db/profileRepo';
 
-
 type Profile = {
     heightCm: number;
     weightKg: number;

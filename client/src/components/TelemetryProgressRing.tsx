@@ -55,7 +55,7 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
             onPress={() => setMetric('steps')}
             className={`px-3 py-1 rounded-full ${metric === 'steps' ? 'bg-accent' : ''}`}
           >
-            <Text className={`text-[10px] font-bold tracking-wide uppercase ${metric === 'steps' ? 'text-background' : 'text-textMuted'}`}>
+            <Text className={`text-[10px] font-bold tracking-wide uppercase ${metric === 'steps' ? 'text-cardBackground' : 'text-textPrimary'}`}>
               Steps
             </Text>
           </Pressable>
@@ -63,7 +63,7 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
             onPress={() => setMetric('calories')}
             className={`px-3 py-1 rounded-full ${metric === 'calories' ? 'bg-accent' : ''}`}
           >
-            <Text className={`text-[10px] font-bold tracking-wide uppercase ${metric === 'calories' ? 'text-background' : 'text-textMuted'}`}>
+            <Text className={`text-[10px] font-bold tracking-wide uppercase ${metric === 'calories' ? 'text-cardBackground' : 'text-textPrimary'}`}>
               Energy
             </Text>
           </Pressable>

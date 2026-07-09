@@ -174,7 +174,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
               ? STATUS_COLORS.empty
               : accentAlpha(colors.accent, 0.4)
             : !hasUserGoal
-              ? accentAlpha(colors.accent, 0.55)
+              ? STATUS_COLORS.empty
               : STATUS_COLORS[status];
 
               const trackClass = showPlaceholder
@@ -183,7 +183,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
                 : 'bg-accent/12'
               : hasUserGoal
                 ? 'bg-transparent'   // no grey track when goal is set
-                : 'bg-backgroundElement/40';
+                : 'bg-transparent';
           return (
             <View key={day.date} className="flex-1 flex-row items-end justify-center px-0.5">
               {showTrack && (
@@ -200,7 +200,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
 
               {showTrack ? (
                 <View
-                  className={`flex-1 items-center justify-end overflow-hidden rounded-t-2xl ${trackClass}`}
+                  className={`flex-1 items-center justify-end overflow-hidden  ${trackClass}`}
                   style={{ height: TRACK_HEIGHT }}
                 >
                   {hasUserGoal && (
@@ -216,7 +216,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
                         !hasUserGoal
                           ? isToday
                             ? 'bg-accent'
-                            : 'bg-accent/80'
+                            : 'bg-accent/50'
                           : barFillClass(status, isToday)
                       }`}
                       style={{ width: '72%', height: `${barPct}%` }}

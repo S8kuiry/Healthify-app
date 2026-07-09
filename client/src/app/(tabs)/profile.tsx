@@ -1,25 +1,62 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from 'expo-router';
 import ScreenContainer from '@/components/ScreenContainer';
 import { useProfile } from '@/context/profileContext';
+import { useActivity } from '@/context/activityContext';
 import { Feather } from '@expo/vector-icons';
 import AddWeightModal from '@/components/AddWeightModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import type { WeightEntry } from '@/context/profileContext';
 import WeightTrendGraph from '@/components/WeightTrendGraph';
 import { DailyActivity, getMonthActivity } from '@/db/dailyActivityRepo';
+import { activeCalories } from '@/domain/calorie';
 import { toLocalDateString } from '@/domain/date';
-
-
 
 export default function ProfileScreen() {
   const { profile, weightHistory, updateWeight, deleteWeight } = useProfile();
+  const { steps, calories } = useActivity();
   const [monthActivity, setMonthActivity] = useState<DailyActivity[]>([]);
   const [showAddWeightModal, setShowAddWeightModal] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<WeightEntry | null>(null);
   const router = useRouter();
+
+  const refreshMonth = useCallback(() => {
+    const yearMonth = toLocalDateString().slice(0, 7);
+    getMonthActivity(yearMonth).then(setMonthActivity);
+  }, []);
+
+  useEffect(() => {
+    refreshMonth();
+  }, [refreshMonth]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshMonth();
+    }, [refreshMonth])
+  );
+
+  const monthActivityWithLive = useMemo(() => {
+    if (!profile) return monthActivity;
+
+    const today = toLocalDateString();
+    if (steps === null) return monthActivity;
+
+    const liveRow: DailyActivity = {
+      date: today,
+      steps,
+      calories: calories ?? activeCalories(steps, profile),
+      stepGoal: profile.stepGoal ?? 0,
+      calorieGoal: profile.calorieGoal ?? 0,
+    };
+
+    const hasToday = monthActivity.some((r) => r.date === today);
+    if (!hasToday) {
+      return [...monthActivity, liveRow].sort((a, b) => a.date.localeCompare(b.date));
+    }
+    return monthActivity.map((r) => (r.date === today ? liveRow : r));
+  }, [monthActivity, steps, calories, profile]);
 
   if (!profile) {
     return (
@@ -32,22 +69,6 @@ export default function ProfileScreen() {
   const sortedHistory = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
   const latestEntries = sortedHistory.slice(-7);
 
-  const refreshMonth = useCallback(() => {
-    const yearMonth = toLocalDateString().slice(0, 7); // 'YYYY-MM' in local time
-    getMonthActivity(yearMonth).then(setMonthActivity);
-  }, []);
-
-  useEffect(() => {
-    refreshMonth();
-  }, []);
-
-  // Refresh when user navigates back to Profile (so month stats update after walking).
-  useFocusEffect(
-    useCallback(() => {
-      refreshMonth();
-    }, [refreshMonth])
-  );
-  
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
@@ -118,8 +139,8 @@ export default function ProfileScreen() {
 
           {/* Weight Trend Graph Section */}
           <View className="mb-6">
-           
-          <WeightTrendGraph weightHistory={weightHistory} monthActivity={monthActivity} />
+
+          <WeightTrendGraph weightHistory={weightHistory} monthActivity={monthActivityWithLive} />
 
           </View>
 
@@ -154,7 +175,7 @@ export default function ProfileScreen() {
                       className={`flex-row justify-between items-center py-3.5 ${index !== latestEntries.length - 1 ? '' : ''
                         }`}
                     >
-                      
+
                       <View className="text-textSecondary text-xs font-semibold flex-1 flex-row items-center gap-2 ">
                         <View className="bg-accent w-1 h-4 "/>
                         <Text className="text-textSecondary text-xs font-semibold">{entry.date}</Text>
@@ -175,7 +196,7 @@ export default function ProfileScreen() {
                         </Pressable>
                       </View>
                     </View>
-                    
+
                   ))
                   }
                   </ScrollView>

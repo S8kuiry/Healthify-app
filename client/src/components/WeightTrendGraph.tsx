@@ -3,6 +3,7 @@ import { View, Text, ScrollView, useColorScheme } from 'react-native';
 import Svg, { Rect, Line, Polyline, Circle } from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import type { DailyActivity } from '@/db/dailyActivityRepo';
+import { formatShortDayMonth } from '@/domain/date';
 import { useAppColors } from '@/hooks/use-app-colors';
 
 export interface WeightHistoryEntry {
@@ -250,7 +251,7 @@ export default function WeightTrendGraph({ weightHistory, monthActivity }: Weigh
           <View className="flex-row items-center gap-1.5 px-4 pb-4 pt-1">
             <Feather name="award" size={12} color={accent} />
             <Text className="text-textSecondary text-[11px] font-semibold">
-              Best day: {stats.bestDay.steps.toLocaleString()} steps on {stats.bestDay.date.split('-')[2]}
+              Best day: {stats.bestDay.steps.toLocaleString()} steps on {formatShortDayMonth(stats.bestDay.date)}
             </Text>
           </View>
         )}

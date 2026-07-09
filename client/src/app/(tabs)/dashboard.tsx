@@ -55,10 +55,6 @@ export default function DashboardScreen() {
 
 
 
-
-
-
-
   return (
     <ScreenContainer>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 80 }}>
@@ -101,10 +97,10 @@ export default function DashboardScreen() {
               </View>
             </View> */}
 
-            <View className="flex-row items-stretch justify-between w-full">
+            <View className="flex-row items-start justify-between w-full">
 
               {/* Steps Column */}
-              <View className="flex-1 items-start">
+              <View className="flex-1 items-start pr-2">
                 <View className="flex-row items-center mb-1">
                   <View className="h-2 w-[2px] bg-accent mr-1.5" />
                   <Text className="text-textSecondary text-[10px] font-bold tracking-[2px] uppercase">Steps</Text>
@@ -133,38 +129,27 @@ export default function DashboardScreen() {
 
                 <Pressable
                   onPress={() => openGoalModal('steps')}
-                  className="rounded-full flex-1  py-1 mt-3 items-center justify-center active:opacity-60"
-                  style={{
-                    minWidth: 92,
-                    backgroundColor: profile && profile?.stepGoal > 0 ? 'transparent' : undefined,
-                  }}
+                  className="mt-3 self-start active:opacity-60"
                 >
                   {profile && profile.stepGoal > 0 ? (
-                    <View className="border border-dashed border-accent  bg-lightBackground flex-row items-center justify-center gap-1 rounded-3xl px-3 py-1   items-center" style={{ minWidth: 92 }}>
-
-
+                    <View className="border border-dashed border-accent bg-lightBackground flex-row items-center rounded-3xl px-3 py-1.5 gap-1">
                       <Text
-                      style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
-                       className="text-textPrimary text-xs font-bold tracking-wide">
-                        GOAL :
+                        style={{ fontVariant: ['tabular-nums'] }}
+                        className="text-textPrimary text-xs font-bold tracking-wide"
+                      >
+                        GOAL:
                       </Text>
-                      <Text 
-                        style={{ lineHeight: 16, fontVariant: ['tabular-nums'] }}
-                      className="text-accent text-xs font-bold tracking-wide">
-                        {profile.stepGoal.toLocaleString()}
+                      <Text
+                        style={{ fontVariant: ['tabular-nums'] }}
+                        className="text-accent text-xs font-bold tracking-wide"
+                        numberOfLines={1}
+                      >
+                        {profile.stepGoal.toLocaleString()} steps
                       </Text>
-                      <Text 
-                      style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
-                      className="text-accent text-xs font-bold tracking-wide ">
-                        steps
-
-                      </Text>
-
-
                     </View>
                   ) : (
-                    <View className="bg-accent rounded-full px-3 py-1 items-center" style={{ minWidth: 92 }}>
-                      <Text className="text-background text-[9px] font-black tracking-wide uppercase">Set Steps</Text>
+                    <View className="bg-accent rounded-full px-4 py-1.5 items-center justify-center" style={{ minWidth: 96 }}>
+                      <Text className="text-cardBackground text-[9px] font-black tracking-wide uppercase">Set Steps</Text>
                     </View>
                   )}
                 </Pressable>
@@ -172,15 +157,15 @@ export default function DashboardScreen() {
 
 
               {/* Divider with technical node */}
-              <View className="items-center justify-center px-1">
-                <View className="w-[1px] flex-1 bg-accent" />
+              <View className="items-center justify-center px-1 pt-6">
+                <View className="w-[1px] h-10 bg-accent" />
                 <View className="h-1.5 w-1.5 rounded-full bg-accent my-1" />
-                <View className="w-[1px] flex-1 bg-accent" />
+                <View className="w-[1px] h-10 bg-accent" />
               </View>
 
 
               {/* Calories Column */}
-              <View className="flex-1 items-end">
+              <View className="flex-1 items-end pl-2">
                 <View className="flex-row items-center mb-1">
                   <View className="h-2 w-[2px] bg-accent mr-1.5" />
                   <Text className="text-textSecondary text-[10px] font-bold tracking-[2px] uppercase">Energy</Text>
@@ -208,38 +193,28 @@ export default function DashboardScreen() {
                 </View>
 
                 <Pressable
-                  style={{ minWidth: 92 }}
                   onPress={() => openGoalModal('calories')}
-                  className="rounded-full flex-1  py-1 mt-3 items-center justify-center active:opacity-60"
+                  className="mt-3 self-end active:opacity-60"
                 >
                   {profile && profile.calorieGoal > 0 ? (
-                    <View className="border border-dashed border-accent  bg-lightBackground flex-row items-center justify-center gap-1 rounded-3xl px-2 py-1   items-center" style={{ width: 110 }}>
-
-
-                      <Text 
-                        style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
-
-                       className="text-textPrimary text-xs font-bold tracking-wide">
-                        GOAL :
-                      </Text>
-                      <Text 
-                        style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
-
-                      className="text-accent text-xs font-bold tracking-wide">
-                        {profile.calorieGoal.toLocaleString()}
+                    <View className="border border-dashed border-accent bg-lightBackground flex-row items-center rounded-3xl px-3 py-1.5 gap-1">
+                      <Text
+                        style={{ fontVariant: ['tabular-nums'] }}
+                        className="text-textPrimary text-xs font-bold tracking-wide"
+                      >
+                        GOAL:
                       </Text>
                       <Text
-                        style={{ lineHeight: 16 , fontVariant: ['tabular-nums'] }}
-                       className="text-accent text-xs font-bold tracking-wide ">
-                        Kcal
-
+                        style={{ fontVariant: ['tabular-nums'] }}
+                        className="text-accent text-xs font-bold tracking-wide"
+                        numberOfLines={1}
+                      >
+                        {profile.calorieGoal.toLocaleString()} kcal
                       </Text>
-
-
                     </View>
                   ) : (
-                    <View className="bg-accent rounded-full px-3 py-1 items-center" style={{ minWidth: 92 }}>
-                      <Text className="text-background text-[9px] font-black tracking-wide uppercase">Set Kcal</Text>
+                    <View className="bg-accent rounded-full px-4 py-1.5 items-center justify-center" style={{ minWidth: 96 }}>
+                      <Text className="text-cardBackground text-[9px] font-black tracking-wide uppercase">Set Kcal</Text>
                     </View>
                   )}
                 </Pressable>

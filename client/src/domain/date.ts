@@ -24,6 +24,15 @@ export function getCurrentWeekRange(): { start: string; end: string } {
   return { start: toLocalDateString(monday), end: toLocalDateString(sunday) };
 }
 
+/** e.g. '2026-07-06' → 'Jul 6' */
+export function formatShortDayMonth(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
 export function getWeekDayStrings(startDate: string): string[] {
   const [y, m, d] = startDate.split('-').map(Number);
   const cursor = new Date(y, m - 1, d);
