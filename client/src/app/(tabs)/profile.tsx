@@ -1,6 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, Pressable, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import ScreenContainer from '@/components/ScreenContainer';
 import { useProfile } from '@/context/profileContext';
 import { Feather } from '@expo/vector-icons';
@@ -9,6 +10,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import type { WeightEntry } from '@/context/profileContext';
 import WeightTrendGraph from '@/components/WeightTrendGraph';
 import { DailyActivity, getMonthActivity } from '@/db/dailyActivityRepo';
+import { toLocalDateString } from '@/domain/date';
 
 
 
@@ -30,11 +32,21 @@ export default function ProfileScreen() {
   const sortedHistory = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
   const latestEntries = sortedHistory.slice(-7);
 
-
-  useEffect(() => {
-    const yearMonth = new Date().toISOString().slice(0, 7); // 'YYYY-MM'
+  const refreshMonth = useCallback(() => {
+    const yearMonth = toLocalDateString().slice(0, 7); // 'YYYY-MM' in local time
     getMonthActivity(yearMonth).then(setMonthActivity);
   }, []);
+
+  useEffect(() => {
+    refreshMonth();
+  }, []);
+
+  // Refresh when user navigates back to Profile (so month stats update after walking).
+  useFocusEffect(
+    useCallback(() => {
+      refreshMonth();
+    }, [refreshMonth])
+  );
   
   return (
     <ScreenContainer>

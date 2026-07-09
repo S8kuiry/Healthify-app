@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
+import ExactAlarmPermissionModal from '@/components/ExactAlarmPermissionModal';
 import ScreenContainer from '@/components/ScreenContainer';
 import ReminderSearchBar from '@/components/reminder-ui/ReminderSearchBar';
 import ReminderListItem from '@/components/reminder-ui/ReminderListItem';
@@ -119,6 +120,7 @@ export default function RemindersScreen() {
 
        
       </View>
+      <ExactAlarmPermissionModal />
     </ScreenContainer>
   );
 }

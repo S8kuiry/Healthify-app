@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android", "web"],
+  "apple": {
+    "modules": ["ReminderAlarmModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.reminderalarm.ReminderAlarmModule"]
+  }
+}

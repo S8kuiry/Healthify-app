@@ -1,6 +1,9 @@
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import type { ParsedTimeDraft, ReminderTime } from '@/domain/reminders/types';
+// Safe import to access your custom scaffolded Expo Native Module bridge
+import ReminderAlarmModule from '../../modules/reminder-alarm/src';
+
 
 const CHANNEL_ID = 'reminders';
 
@@ -95,12 +98,32 @@ export async function scheduleTime(
     if (!row.time) return [];
 
     const normalized = normalizeScheduleRow(row);
-    const ids: string[] = [];
     const baseTrigger = nextTriggerDate(normalized.time!, normalized.date);
+
+
+    // -------------------------------------------------------------
+  // 1. ANDROID ROUTE: High-Priority OS Kernel Alarm Subsystem
+  // -------------------------------------------------------------
+  if (Platform.OS === 'android') {
+    // Generate a unique token key to record and index inside SQLite
+    const uniqueAlarmId = `alarm_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const triggerTimestampMs = baseTrigger.getTime();
+
+    // Hand off configuration to the background lifecycle worker thread
+    await ReminderAlarmModule.scheduleAlarm(uniqueAlarmId, label, triggerTimestampMs);
+    
+    // Return wrapped inside an array to cleanly conform with your database schema
+    return [uniqueAlarmId];
+  }
+
+
+    const ids: string[] = [];
     const isDaily = normalized.repeat === 'daily';
     const burstRepeatsDaily = isDaily && normalized.repeatBurstDaily;
     const fireCount = normalized.fireCount;
     const intervalSeconds = normalized.fireIntervalSeconds;
+
+
   
     for (let i = 0; i < fireCount; i++) {
       const fireDate = new Date(baseTrigger.getTime() + i * intervalSeconds * 1000);
@@ -130,20 +153,34 @@ export async function scheduleTime(
 
 
 
-export async function cancelTime(notificationIds: string[]): Promise<void> {
+  export async function cancelTime(notificationIds: string[]): Promise<void> {
     for (const id of notificationIds) {
-      await Notifications.cancelScheduledNotificationAsync(id);
+      // Branch native cancellations safely based on custom tracking ID format
+      if (Platform.OS === 'android' && id.startsWith('alarm_')) {
+        await ReminderAlarmModule.cancelAlarm(id);
+      } else {
+        await Notifications.cancelScheduledNotificationAsync(id);
+      }
     }
   }
-  
+
+
   export async function snoozeNotification(label: string, delayMinutes: number): Promise<void> {
+  if (Platform.OS === 'android') {
+    const uniqueSnoozeId = `alarm_snooze_${Date.now()}`;
+    const targetTimeMs = Date.now() + delayMinutes * 60 * 1000;
+    
+    // Route snooze records using absolute Unix epoch timing directly to the native module
+    await ReminderAlarmModule.scheduleAlarm(uniqueSnoozeId, label, targetTimeMs);
+  } else {
+    // Maintain standard iOS relative time interval handling mechanics
     await Notifications.scheduleNotificationAsync({
       content: { title: 'HealthApp', body: label },
       trigger: {
         type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
         seconds: delayMinutes * 60,
         repeats: false,
-        channelId: CHANNEL_ID,
       },
     });
   }
+}

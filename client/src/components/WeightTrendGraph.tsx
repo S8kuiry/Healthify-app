@@ -30,7 +30,7 @@ export default function WeightTrendGraph({ weightHistory, monthActivity }: Weigh
   const colors = useAppColors();
   const colorScheme = useColorScheme();
   const accent = colorScheme === 'dark' ? '#34D399' : '#059669';
-  const weightLine = colorScheme === 'dark' ? '#F472B6' : '#DB2777';
+  const weightLine = colorScheme === 'dark' ? 'rgb(250, 59, 11)' : 'rgb(240, 53, 53)';
   const barTrack = colorScheme === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(71, 85, 105, 0.08)';
   const gridColor = colorScheme === 'dark' ? '#94A3B8' : '#64748B';
   const dotFill = colorScheme === 'dark' ? '#161E31' : '#FFFFFF';

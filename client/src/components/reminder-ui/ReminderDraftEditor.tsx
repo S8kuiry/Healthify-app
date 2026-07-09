@@ -131,9 +131,10 @@ function PopCountInput({
   onCommit: (n: number) => void;
 }) {
   const [text, setText] = useState(String(fireCount));
+  const [focused, setFocused] = useState(false);
 
   useEffect(() => {
-    setText(String(fireCount));
+    if (!focused) setText(String(fireCount));
   }, [fireCount]);
 
   const commit = useCallback(() => {
@@ -148,11 +149,17 @@ function PopCountInput({
       keyboardType="number-pad"
       selectTextOnFocus
       value={text}
+      onFocus={() => setFocused(true)}
       onChangeText={(val) => {
         onManualEdit();
-        setText(val.replace(/\D/g, ''));
+        const cleaned = val.replace(/\D/g, '');
+        setText(cleaned);
+        onCommit(cleaned ? clampFireCount(cleaned) : 1);
       }}
-      onBlur={commit}
+      onBlur={() => {
+        setFocused(false);
+        commit();
+      }}
       onSubmitEditing={commit}
       style={{
         fontSize: 11,

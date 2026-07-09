@@ -88,7 +88,7 @@ export default function ReminderListItem({ reminder }: { reminder: Reminder }) {
 
         <Pressable
           onPress={() => setShowDeleteConfirm(true)}
-          className={`border border-dashed border-red-700 flex-row items-center gap-1.5 active:opacity-60 ${reminder.enabled ? '' : 'bg-cardBackground'} px-3 py-1.5 rounded-xl`}
+          className={`border  border-red-700 flex-row items-center gap-1.5 active:opacity-60 ${reminder.enabled ? '' : 'bg-cardBackground'} px-3 py-1.5 rounded-xl`}
         >
           <Feather name="trash-2" size={11} color="#DC2626" />
           <Text className="text-danger font-bold text-[10px] tracking-wide">

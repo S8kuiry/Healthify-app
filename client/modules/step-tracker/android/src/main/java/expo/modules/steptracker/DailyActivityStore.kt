@@ -4,11 +4,13 @@ import android.content.ContentValues
 import android.content.Context
 import android.database.sqlite.SQLiteDatabase
 import android.util.Log
+import java.io.File
 
 object DailyActivityStore {
   private const val TAG = "DailyActivityStore"
   private const val DB_NAME = "healthapp.db"
   private const val TABLE = "daily_activity"
+  private var loggedDbPathOnce = false
 
   /**
    * Tables are created by JS migrations on first app launch. Native code only
@@ -31,10 +33,19 @@ object DailyActivityStore {
     stepGoal: Int,
     calorieGoal: Int
   ) {
-    val db = context.openOrCreateDatabase(DB_NAME, Context.MODE_PRIVATE, null)
+    // IMPORTANT: Must use the same DB file location as expo-sqlite.
+    // expo-sqlite defaultDatabaseDirectory on Android is: context.filesDir + "/SQLite"
+    val dbDir = File(context.filesDir, "SQLite")
+    if (!dbDir.exists()) dbDir.mkdirs()
+    val dbFile = File(dbDir, DB_NAME)
+    val db = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
     try {
+      if (!loggedDbPathOnce) {
+        loggedDbPathOnce = true
+        Log.w(TAG, "using sqlite path=${db.path} (expected expo-sqlite dir=${dbDir.absolutePath})")
+      }
       if (!tableExists(db)) {
-        Log.w(TAG, "upsert skipped — $TABLE not found; JS migrations must run first")
+        Log.w(TAG, "upsert skipped — $TABLE not found (db.path=${db.path}); JS migrations must run first")
         return
       }
 
