@@ -22,7 +22,7 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
   const hasGoal = goal && goal > 0;
 
   // 2. Futuristic SVG Circular Computation Matrix
-  const size = 110;
+  const size = 100;
   const strokeWidth = 8;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -123,7 +123,7 @@ export default function TelemetryProgressRing({ steps, calories, profile }: Prop
             {/* Inner Ring Typography Core */}
             <View className="absolute items-center justify-center">
               <Text 
-                className="text-textPrimary text-xl font-black tracking-tighter" 
+                className="text-textPrimary text-sm font-black tracking-tighter" 
                 style={{ fontVariant: ['tabular-nums'] }}
               >
                 {pct}%

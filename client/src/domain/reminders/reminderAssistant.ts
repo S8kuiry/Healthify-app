@@ -49,22 +49,35 @@ function formatTime12h(time: string): string {
   return `${hour12}:${String(m).padStart(2, '0')} ${period}`;
 }
 
+function isToday(dateStr: string): boolean {
+  const today = new Date();
+  const y = today.getFullYear();
+  const m = String(today.getMonth() + 1).padStart(2, '0');
+  const d = String(today.getDate()).padStart(2, '0');
+  return dateStr === `${y}-${m}-${d}`;
+}
+
+// 'YYYY-MM-DD' -> 'Jul 12'
+function formatDateNice(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  if (!y || !m || !d) return dateStr;
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 function describeSchedule(t: ParsedTimeDraft): string {
   const timeLabel = t.time ? formatTime12h(t.time) : '—';
-  const repeatLabel = t.repeat === 'daily' ? 'every day' : 'once';
-  const popLabel = t.fireCount > 1 ? `${t.fireCount} times` : 'once';
+  // Only surface a date for one-off reminders on a day other than today.
+  const showDate = t.repeat === 'once' && !!t.date && !isToday(t.date);
+  const cadence = t.repeat === 'daily' ? 'every day' : showDate ? `on ${formatDateNice(t.date!)}` : null;
 
   if (t.fireCount > 1) {
-    const burstNote =
-      t.repeat === 'daily'
-        ? t.repeatBurstDaily
-          ? ' (repeats every day)'
-          : ' (burst today only)'
-        : '';
-    return `${popLabel} starting at ${timeLabel}, ${repeatLabel}${burstNote}`;
+    const todayOnly = t.repeat === 'daily' && !t.repeatBurstDaily ? ' (today only)' : '';
+    const tail = cadence ? `, ${cadence}` : '';
+    return `${t.fireCount} times from ${timeLabel}${tail}${todayOnly}`;
   }
 
-  return `at ${timeLabel}, ${repeatLabel}`;
+  if (t.repeat === 'daily') return `every day at ${timeLabel}`;
+  return showDate ? `on ${formatDateNice(t.date!)} at ${timeLabel}` : `at ${timeLabel}`;
 }
 
 export function getAssistantState(label: string, times: ParsedTimeDraft[]): AssistantState {
@@ -82,8 +95,8 @@ export function getAssistantState(label: string, times: ParsedTimeDraft[]): Assi
     const options = meridiemOptions(first.time);
     if (options) {
       return {
-        message: `Did you mean ${options.amLabel} or ${options.pmLabel}?`,
-        preview: `I'll remind you about "${trimmed}" — just need to confirm the time.`,
+        message: `Quick check — did you mean ${options.amLabel} or ${options.pmLabel}?`,
+        preview: `Almost there — I'll remind you about "${trimmed}", just confirm the time.`,
         ready: false,
         clarification: options,
       };
@@ -93,8 +106,8 @@ export function getAssistantState(label: string, times: ParsedTimeDraft[]): Assi
   if (!allTimesSet) {
     const popHint =
       first && first.fireCount > 1
-        ? ` I noticed you want ${first.fireCount} reminders — I just need a start time.`
-        : ' I still need a time — tap the clock below or pick a quick option.';
+        ? ` I'll send ${first.fireCount} nudges — just pick a start time below.`
+        : ' Just pick a time below, or tap a quick option.';
     return {
       message: `Got it.${popHint}`,
       preview: `I'll remind you about "${trimmed}".`,
@@ -105,8 +118,8 @@ export function getAssistantState(label: string, times: ParsedTimeDraft[]): Assi
 
   const schedule = times.map(describeSchedule).join(' · ');
   return {
-    message: `Ready to save — ${schedule}.`,
-    preview: `I'll remind you about "${trimmed}" — ${schedule}.`,
+    message: `All set — I'll remind you ${schedule}.`,
+    preview: `You're good to go — I'll remind you about "${trimmed}" ${schedule}.`,
     ready: true,
     clarification: null,
   };

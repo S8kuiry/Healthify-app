@@ -100,6 +100,38 @@ export async function getMonthActivity(yearMonth: string): Promise<DailyActivity
 }
 
 /**
+ * Fetch all snapshot rows for a given calendar year, e.g. '2026'.
+ * Powers the monthly weight-trend chart, which aggregates these days by month.
+ */
+export async function getYearActivity(year: string): Promise<DailyActivity[]> {
+    const db = await getDb();
+    const rows = await db.getAllAsync<any>(
+        `SELECT date, steps, calories, step_goal, calorie_goal
+         FROM daily_activity
+         WHERE date LIKE ?
+         ORDER BY date ASC;`,
+        [`${year}-%`]
+    );
+    return rows.map((row) => ({
+        date: row.date,
+        steps: row.steps,
+        calories: row.calories,
+        stepGoal: row.step_goal,
+        calorieGoal: row.calorie_goal,
+    }));
+}
+
+/**
+ * Year-rollover reset: delete every daily-activity snapshot from before the given
+ * calendar year, e.g. pruneActivityBeforeYear('2027') drops all 2026-and-earlier
+ * rows. Steps/calories history for past years is not carried over.
+ */
+export async function pruneActivityBeforeYear(year: string): Promise<void> {
+    const db = await getDb();
+    await db.runAsync(`DELETE FROM daily_activity WHERE date < ?;`, [`${year}-01-01`]);
+}
+
+/**
  * Delete a snapshot row (rarely needed — e.g. debugging/testing).
  */
 export async function deleteDailyActivity(date: string): Promise<void> {

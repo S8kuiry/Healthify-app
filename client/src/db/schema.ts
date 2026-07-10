@@ -20,6 +20,11 @@ export async function runMigrations() {
       calorie_goal INTEGER NOT NULL DEFAULT 0
     );
 
+    CREATE TABLE IF NOT EXISTS app_meta (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    );
+
     CREATE TABLE IF NOT EXISTS weight_entries (
       id TEXT PRIMARY KEY,
       date TEXT NOT NULL,        -- ISO date, e.g. '2026-06-28'

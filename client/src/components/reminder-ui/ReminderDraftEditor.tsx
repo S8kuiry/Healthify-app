@@ -420,7 +420,10 @@ export default function ReminderDraftEditor({ initialDraft, title, onSave, onCan
 
   const manualFireCountRef = useRef(false);
 
-  const userPickedTimeRef = useRef(false);
+  // Seed as "already picked" when the loaded reminder has a stored time, so the
+  // auto-parse effect can't re-derive a time from the label's wording (e.g.
+  // "Drink water at 7:05 pm") and silently overwrite the real saved time.
+  const userPickedTimeRef = useRef(Boolean(initialDraft.times?.[0]?.time));
 
 
 

@@ -119,8 +119,8 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
       </View>
 
       {/* Stats row */}
-      <View className="flex-row mb-5">
-        <View className="flex-1">
+      <View className="flex-row items-start justify-center mb-7 gap-10">
+        <View className="flex items-start justify-center">
           <Text className="text-textMuted text-[9px] font-bold tracking-widest uppercase mb-0.5">
             Avg / day
           </Text>
@@ -131,7 +131,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
             {avg.toLocaleString()}
           </Text>
         </View>
-        <View className="flex-1">
+        {/* <View className="flex-1">
           <Text className="text-textMuted text-[9px] font-bold tracking-widest uppercase mb-0.5">
             Total
           </Text>
@@ -141,8 +141,8 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
           >
             {total.toLocaleString()}
           </Text>
-        </View>
-        <View className="flex-1">
+        </View> */}
+        <View className="flex-1 items-start justify-center">
           <Text className="text-textMuted text-[9px] font-bold tracking-widest uppercase mb-0.5">
             Best Day
           </Text>
@@ -190,7 +190,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
                 <View
                   className="rounded-2xl mr-0.5"
                   style={{
-                    width: 2,
+                    width: 1,
                     height: showPlaceholder ? 12 : TRACK_HEIGHT,
                     backgroundColor: stripeColor,
                     alignSelf: showPlaceholder ? 'flex-end' : 'stretch',
@@ -219,7 +219,7 @@ export default function WeeklyActivityChart({ data, stepGoal, calorieGoal }: Pro
                             : 'bg-accent/50'
                           : barFillClass(status, isToday)
                       }`}
-                      style={{ width: '72%', height: `${barPct}%` }}
+                      style={{ width: '51%', height: `${barPct}%` }}
                     />
                   )}
                 </View>

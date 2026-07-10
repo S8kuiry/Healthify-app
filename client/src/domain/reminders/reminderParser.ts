@@ -84,6 +84,86 @@ function classifyNeedsClarification(text: string): boolean {
   return false;
 }
 
+// --- Label cleaning ---------------------------------------------------------
+// Purely cosmetic: turn messy typed/spoken input into a clean, human-looking
+// reminder name. None of this touches the scheduled time / frequency / repeat.
+
+// Common misspellings & shorthands for words that show up in reminders. Lets the
+// parser feel smart without a real spell-checker. Keys are lowercase.
+const TYPO_FIXES: Record<string, string> = {
+  medicien: 'medicine', medecine: 'medicine', medicin: 'medicine', mediciene: 'medicine',
+  medcine: 'medicine', medisine: 'medicine',
+  medation: 'medication', medicaton: 'medication', medicatoin: 'medication',
+  tablest: 'tablets', tablts: 'tablets',
+  appointmnt: 'appointment', apointment: 'appointment', appointmentt: 'appointment', appt: 'appointment',
+  meetign: 'meeting', metting: 'meeting', meething: 'meeting', meting: 'meeting', mtg: 'meeting',
+  worout: 'workout', workut: 'workout', workot: 'workout',
+  excercise: 'exercise', exercize: 'exercise', excersize: 'exercise',
+  watter: 'water', watr: 'water',
+  breakfst: 'breakfast', brekfast: 'breakfast', breakfsat: 'breakfast',
+  dinnner: 'dinner', luch: 'lunch',
+  doctr: 'doctor', docter: 'doctor',
+  grocries: 'groceries', groceris: 'groceries',
+  vitamn: 'vitamin', vitmin: 'vitamin',
+  laundy: 'laundry', laundary: 'laundry',
+  birthdy: 'birthday', bday: 'birthday',
+  tomorow: 'tomorrow', tomorrw: 'tomorrow',
+};
+
+function fixTypos(text: string): string {
+  return text.replace(/[A-Za-z']+/g, (word) => {
+    const fix = TYPO_FIXES[word.toLowerCase()];
+    if (!fix) return word;
+    // Preserve the original word's leading capitalization.
+    return /^[A-Z]/.test(word) ? fix.charAt(0).toUpperCase() + fix.slice(1) : fix;
+  });
+}
+
+// Polite/filler lead-ins ("hey", "please", "can you", "i need to"…).
+const LEAD_IN =
+  /^(?:\s*(?:hey|hi|ok|okay|so|um|please|pls|plz|kindly|can you|could you|would you|will you|i (?:need|have|want|would like|gotta|wanna) to|i'?m supposed to|don'?t forget to|dont forget to|make sure (?:to|i)|help me)\b\s*)+/i;
+// The reminder command wrapper itself.
+const COMMAND =
+  /^(?:give me (?:a )?reminder|set(?:ting)?(?: up)? (?:a |an )?reminder|create (?:a )?reminder|add (?:a )?reminder|remind me|reminder|alert me|notify me|ping me|wake me(?: up)?)\b[\s,:-]*/i;
+// Connective words right after the command ("to", "about", "that", "the", "a"…).
+const CONNECTOR = /^(?:to|for|about|that|the|a|an)\b\s*/i;
+// Dangling connective words left over once the time phrase is removed.
+const TRAILING =
+  /[\s,]+(?:at|on|by|for|to|in|the|a|an|of|every|this|next|today|tonight|and|with|please|pls)$/i;
+
+function cleanLabel(raw: string): string {
+  let s = (raw ?? '').trim();
+  if (!s) return '';
+
+  // Remove leftover scheduling phrases ("3 times a day", "twice in a row").
+  s = s
+    .replace(/\b(\d+|once|twice|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*times?\s*a\s*day\b/gi, '')
+    .replace(BURST_PATTERN, '')
+    .trim();
+
+  // Peel polite lead-ins + the command wrapper, then any connectors after it.
+  s = s.replace(LEAD_IN, '').replace(COMMAND, '').replace(LEAD_IN, '').trim();
+  let prevConn: string;
+  do {
+    prevConn = s;
+    s = s.replace(CONNECTOR, '').trim();
+  } while (s !== prevConn && s.length > 0);
+
+  // Trim dangling connective words and stray punctuation.
+  let prev: string;
+  do {
+    prev = s;
+    s = s.replace(TRAILING, '').trim();
+  } while (s !== prev && s.length > 0);
+  s = s.replace(/\s{2,}/g, ' ').replace(/^[\s,;:.\-]+|[\s,;:.\-]+$/g, '').trim();
+
+  // Light spelling fixes, then sentence-case the first letter (leave the rest).
+  s = fixTypos(s);
+  if (s) s = s.charAt(0).toUpperCase() + s.slice(1);
+
+  return s;
+}
+
 export function parseReminderInput(text: string): ParsedReminderDraft {
   const safeText = (text ?? '').trim();
   if (!safeText) {
@@ -129,24 +209,26 @@ export function parseReminderInput(text: string): ParsedReminderDraft {
       repeat = hasExplicitDay ? 'once' : 'daily';
     }
 
-    // Strip whatever chrono matched, PLUS the literal "everyday"/"every day"
-    // if it wasn't already inside chrono's matched span.
-    label = safeText.replace(matched.text, '').replace(EVERYDAY_PATTERN, '').trim();
+    // Strip whatever chrono matched, PLUS the literal "everyday"/"every day".
+    // chrono matched against normalizedText, so strip the matched span from THAT
+    // by index — matched.text may not exist verbatim in the original (e.g. "p.m"
+    // was normalized to "PM"), which would otherwise leave the time words stuck
+    // in the label.
+    const withoutTime =
+      normalizedText.slice(0, matched.index) + normalizedText.slice(matched.index + matched.text.length);
+    label = withoutTime.replace(EVERYDAY_PATTERN, '').trim();
   } else if (explicitEveryday) {
     // No time found at all, but "everyday" was said — still record the intent to repeat daily
     repeat = 'daily';
     label = safeText.replace(EVERYDAY_PATTERN, '').trim();
   }
 
-  label = label
-    .replace(/^(give me a reminder|remind me|set a reminder)\s*(to|for|about)?/i, '')
-    .replace(/\b(\d+|once|twice|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s*times?\s*a\s*day/i, '')
-    .replace(BURST_PATTERN, '')
-    .replace(/\s{2,}/g, ' ')
-    .trim();
-
+  label = cleanLabel(label);
   if (!label) {
-    label = safeText;
+    // Nothing meaningful survived (e.g. "remind me at 5pm") — the text was all
+    // command + time with no subject, so use a neutral name rather than echoing
+    // the raw command back.
+    label = 'Reminder';
   }
 
   const frequencyCount = extractFrequencyCount(safeText);

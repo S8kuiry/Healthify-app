@@ -16,12 +16,12 @@ export default function SnoozePicker({ onSnooze }: { onSnooze: (minutes: number)
   // Default Closed State: Elegant minimalist chip indicator
   if (!open) {
     return (
-      <Pressable 
+      <Pressable
         onPress={() => setOpen(true)}
-        className="flex-row items-center gap-1 bg-cardBackground border border-accent px-2.5 py-1.5 rounded-xl active:opacity-75"
+        className="flex-row items-center gap-1.5 bg-cardBackground border border-accent px-2.5 py-1.5 rounded-xl active:opacity-75"
       >
         <Feather name="bell" size={10} color='rgb(5,150,105)' />
-        <Text className="text-textSecondary text-[11px] font-semibold ml-1.5 tracking-wide">
+        <Text className="text-textSecondary text-[11px] font-semibold tracking-wide">
           Snooze
         </Text>
       </Pressable>

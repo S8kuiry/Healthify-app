@@ -43,3 +43,19 @@ export async function deleteWeightEntry(id: string): Promise<void> {
   const db = await getDb();
   await db.runAsync('DELETE FROM weight_entries WHERE id = ?;', [id]);
 }
+
+/**
+ * Year-rollover reset: delete weight entries from before `year`, keeping only the
+ * single most recent one — the "anchor" that seeds the new year's weight trend.
+ */
+export async function pruneWeightsBeforeYear(year: string): Promise<void> {
+  const db = await getDb();
+  const cutoff = `${year}-01-01`;
+  const anchor = await db.getFirstAsync<{ id: string }>(
+    'SELECT id FROM weight_entries WHERE date < ? ORDER BY date DESC LIMIT 1;',
+    [cutoff]
+  );
+  if (anchor) {
+    await db.runAsync('DELETE FROM weight_entries WHERE date < ? AND id != ?;', [cutoff, anchor.id]);
+  }
+}

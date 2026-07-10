@@ -58,7 +58,13 @@ export default function EditReminderScreen() {
     } else {
       await createReminder(finalDraft.label, finalDraft.times);
     }
-    router.push('/(tabs)/reminders');
+    // Pop this editor off the stack (not push a new screen) so it can't be reused
+    // later with the pre-save draft still in its state.
+    if (router.canGoBack()) {
+      router.replace('/(tabs)/reminders');
+    } else {
+      router.replace('/(tabs)/reminders');
+    }
   }
 
   if (!draft) {
@@ -71,7 +77,7 @@ export default function EditReminderScreen() {
       initialDraft={draft}
       title={id ? 'Edit Reminder' : 'New Reminder'}
       onSave={handleSave}
-      onCancel={() => router.push('/(tabs)/reminders')}
+      onCancel={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/reminders'))}
     />
     </ScreenContainer>
   );

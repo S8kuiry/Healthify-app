@@ -10,38 +10,38 @@ import AddWeightModal from '@/components/AddWeightModal';
 import ConfirmModal from '@/components/ConfirmModal';
 import type { WeightEntry } from '@/context/profileContext';
 import WeightTrendGraph from '@/components/WeightTrendGraph';
-import { DailyActivity, getMonthActivity } from '@/db/dailyActivityRepo';
+import { DailyActivity, getYearActivity } from '@/db/dailyActivityRepo';
 import { activeCalories } from '@/domain/calorie';
 import { toLocalDateString } from '@/domain/date';
 
 export default function ProfileScreen() {
-  const { profile, weightHistory, updateWeight, deleteWeight } = useProfile();
+  const { profile, weightHistory, updateWeight, deleteWeight, showNewYearBanner, dismissNewYearBanner } = useProfile();
   const { steps, calories } = useActivity();
-  const [monthActivity, setMonthActivity] = useState<DailyActivity[]>([]);
+  const [yearActivity, setYearActivity] = useState<DailyActivity[]>([]);
   const [showAddWeightModal, setShowAddWeightModal] = useState(false);
   const [entryToDelete, setEntryToDelete] = useState<WeightEntry | null>(null);
   const router = useRouter();
 
-  const refreshMonth = useCallback(() => {
-    const yearMonth = toLocalDateString().slice(0, 7);
-    getMonthActivity(yearMonth).then(setMonthActivity);
+  const refreshYear = useCallback(() => {
+    const year = toLocalDateString().slice(0, 4);
+    getYearActivity(year).then(setYearActivity);
   }, []);
 
   useEffect(() => {
-    refreshMonth();
-  }, [refreshMonth]);
+    refreshYear();
+  }, [refreshYear]);
 
   useFocusEffect(
     useCallback(() => {
-      refreshMonth();
-    }, [refreshMonth])
+      refreshYear();
+    }, [refreshYear])
   );
 
-  const monthActivityWithLive = useMemo(() => {
-    if (!profile) return monthActivity;
+  const yearActivityWithLive = useMemo(() => {
+    if (!profile) return yearActivity;
 
     const today = toLocalDateString();
-    if (steps === null) return monthActivity;
+    if (steps === null) return yearActivity;
 
     const liveRow: DailyActivity = {
       date: today,
@@ -51,12 +51,12 @@ export default function ProfileScreen() {
       calorieGoal: profile.calorieGoal ?? 0,
     };
 
-    const hasToday = monthActivity.some((r) => r.date === today);
+    const hasToday = yearActivity.some((r) => r.date === today);
     if (!hasToday) {
-      return [...monthActivity, liveRow].sort((a, b) => a.date.localeCompare(b.date));
+      return [...yearActivity, liveRow].sort((a, b) => a.date.localeCompare(b.date));
     }
-    return monthActivity.map((r) => (r.date === today ? liveRow : r));
-  }, [monthActivity, steps, calories, profile]);
+    return yearActivity.map((r) => (r.date === today ? liveRow : r));
+  }, [yearActivity, steps, calories, profile]);
 
   if (!profile) {
     return (
@@ -140,9 +140,25 @@ export default function ProfileScreen() {
           {/* Weight Trend Graph Section */}
           <View className="mb-6">
 
-          <WeightTrendGraph weightHistory={weightHistory} monthActivity={monthActivityWithLive} />
+          <WeightTrendGraph weightHistory={weightHistory} activity={yearActivityWithLive} />
 
           </View>
+
+          {/* New-year fresh-start banner (shown once per rollover, dismissible) */}
+          {showNewYearBanner && (
+            <View className="mb-4 flex-row items-center rounded-3xl bg-accent/10 border border-accent/20 px-4 py-3">
+              <Text className="text-2xl mr-3">🎉</Text>
+              <View className="flex-1 pr-2">
+                <Text className="text-textPrimary text-sm font-black tracking-tight">New Year, New Start</Text>
+                <Text className="text-textSecondary text-[11px] font-medium mt-0.5">
+                  A fresh slate for the new year — your latest weight is kept. Let’s start afresh!
+                </Text>
+              </View>
+              <Pressable onPress={dismissNewYearBanner} hitSlop={10} className="p-1 active:opacity-70">
+                <Feather name="x" size={16} color="#8a8a8a" />
+              </Pressable>
+            </View>
+          )}
 
           {/* Historical Entries List */}
           <View className="mb-2">
@@ -165,7 +181,7 @@ export default function ProfileScreen() {
                 </View>
 
               ) : (
-                <ScrollView showsVerticalScrollIndicator={false}>
+                <ScrollView  showsVerticalScrollIndicator={false}>
                 {latestEntries
                   .slice()
                   .reverse()

@@ -11,20 +11,29 @@ class AlarmReceiver : BroadcastReceiver() {
         val label = intent.getStringExtra("REMINDER_LABEL") ?: "Reminder Alert"
         val timestamp = intent.getLongExtra("TIMESTAMP", 0L)
 
-        // 1. Kickstart audio/vibe manager background sequence loop
+        // 1. Kickstart the foreground service — it plays the alarm audio AND posts the
+        //    full-screen-intent notification that reliably launches AlarmActivity from
+        //    the background / lock screen (see AlarmService).
         val serviceIntent = Intent(context, AlarmService::class.java).apply {
             putExtra("REMINDER_ID", id)
             putExtra("REMINDER_LABEL", label)
+            putExtra("TIMESTAMP", timestamp)
         }
         ContextCompat.startForegroundService(context, serviceIntent)
 
-        // 2. Project full screen UI view on top of screen locks safely
+        // 2. Best-effort direct launch: only succeeds when the app is already in the
+        //    foreground. Background activity launches are blocked on Android 10+, where
+        //    the full-screen intent above is what actually shows the screen.
         val activityIntent = Intent(context, AlarmActivity::class.java).apply {
             putExtra("REMINDER_ID", id)
             putExtra("REMINDER_LABEL", label)
             putExtra("TIMESTAMP", timestamp)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
-        context.startActivity(activityIntent)
+        try {
+            context.startActivity(activityIntent)
+        } catch (_: Exception) {
+            // Blocked in the background — expected; the full-screen intent handles it.
+        }
     }
 }

@@ -132,7 +132,7 @@ export default function DashboardScreen() {
                   className="mt-3 self-start active:opacity-60"
                 >
                   {profile && profile.stepGoal > 0 ? (
-                    <View className="border border-dashed border-accent bg-lightBackground flex-row items-center rounded-3xl px-3 py-1.5 gap-1">
+                    <View className="border border-dashed border-accent  flex-row items-center rounded-3xl px-3 py-1.5 gap-1">
                       <Text
                         style={{ fontVariant: ['tabular-nums'] }}
                         className="text-textPrimary text-xs font-bold tracking-wide"
@@ -197,7 +197,7 @@ export default function DashboardScreen() {
                   className="mt-3 self-end active:opacity-60"
                 >
                   {profile && profile.calorieGoal > 0 ? (
-                    <View className="border border-dashed border-accent bg-lightBackground flex-row items-center rounded-3xl px-3 py-1.5 gap-1">
+                    <View className="border border-dashed border-accent bg-transparent flex-row items-center rounded-3xl px-3 py-1.5 gap-1">
                       <Text
                         style={{ fontVariant: ['tabular-nums'] }}
                         className="text-textPrimary text-xs font-bold tracking-wide"

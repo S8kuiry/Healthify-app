@@ -106,7 +106,8 @@ export default function ReminderListItem({ reminder }: { reminder: Reminder }) {
             void deleteReminder(reminder.id);
             setShowDeleteConfirm(false);
           }}
-        />      </View>
+        />
+      </View>
     </Pressable>
   );
 }

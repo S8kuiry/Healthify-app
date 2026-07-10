@@ -23,6 +23,7 @@ class AlarmService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val id = intent?.getStringExtra("REMINDER_ID") ?: "0"
         val label = intent?.getStringExtra("REMINDER_LABEL") ?: "Health Reminder"
+        val timestamp = intent?.getLongExtra("TIMESTAMP", 0L) ?: 0L
 
         if (intent?.action == "ACTION_DISMISS") {
             stopSelf()
@@ -35,12 +36,32 @@ class AlarmService : Service() {
         val dismissIntent = Intent(this, AlarmService::class.java).apply { action = "ACTION_DISMISS" }
         val dismissPending = PendingIntent.getService(this, id.hashCode(), dismissIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        // Full-screen intent — the reliable way to pop the alarm UI from the background /
+        // lock screen. A direct startActivity() from a background receiver is blocked on
+        // Android 10+, so we hand the launch to the OS instead. It honours it because the
+        // channel is IMPORTANCE_HIGH and we hold the USE_FULL_SCREEN_INTENT permission.
+        val fullScreenIntent = Intent(this, AlarmActivity::class.java).apply {
+            putExtra("REMINDER_ID", id)
+            putExtra("REMINDER_LABEL", label)
+            putExtra("TIMESTAMP", timestamp)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        }
+        val fullScreenPending = PendingIntent.getActivity(
+            this,
+            id.hashCode(),
+            fullScreenIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Health Notification")
             .setContentText(label)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
             .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setFullScreenIntent(fullScreenPending, true)
+            .setContentIntent(fullScreenPending)
             .setOngoing(true)
             .setAutoCancel(false)
             .addAction(android.R.drawable.ic_menu_close_clear_cancel, "Dismiss", dismissPending)

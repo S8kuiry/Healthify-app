@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { runMigrations } from '../db/schema';
 import { getProfile, upsertProfile } from '../db/profileRepo';
-import { getAllWeightEntries, upsertWeightEntry, upsertWeightEntryForToday, deleteWeightEntry } from '../db/weightRepo';
+import { getAllWeightEntries, upsertWeightEntry, upsertWeightEntryForToday, deleteWeightEntry, pruneWeightsBeforeYear } from '../db/weightRepo';
+import { pruneActivityBeforeYear } from '../db/dailyActivityRepo';
+import { getMeta, setMeta } from '../db/appMetaRepo';
 import { updateGoals as updateGoalsRepo } from '../db/profileRepo';
 
 type Profile = {
@@ -32,6 +34,9 @@ type ProfileContextValue = {
     clearCalorieGoal: () => Promise<void>;
     updateWeight: (weight: NonNullable<WeightEntry>) => Promise<void>;
     deleteWeight: (id: string) => Promise<void>;
+    /** True right after a new-year rollover reset, until the user dismisses the banner. */
+    showNewYearBanner: boolean;
+    dismissNewYearBanner: () => void;
 
 }
 
@@ -44,11 +49,29 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
     const [darkMode, setDarkMode] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [dbReady, setDbReady] = useState(false);
+    const [showNewYearBanner, setShowNewYearBanner] = useState(false);
 
     useEffect(() => {
         (async () => {
             await runMigrations();
             setDbReady(true);
+
+            // New-year rollover reset: runs once per calendar year. On first-ever
+            // launch we just record the year (nothing to prune). When the year has
+            // advanced, silently drop past-year activity + all but the most recent
+            // weigh-in, and flag the "new year" banner.
+            const currentYear = String(new Date().getFullYear());
+            const lastPruneYear = await getMeta('last_prune_year');
+            if (lastPruneYear === null) {
+                await setMeta('last_prune_year', currentYear);
+            } else if (currentYear > lastPruneYear) {
+                await pruneActivityBeforeYear(currentYear);
+                await pruneWeightsBeforeYear(currentYear);
+                await setMeta('last_prune_year', currentYear);
+                await setMeta('newyear_banner_year', currentYear);
+            }
+            setShowNewYearBanner((await getMeta('newyear_banner_year')) === currentYear);
+
             const savedProfile = await getProfile();
             const history = await getAllWeightEntries();
             setProfile(savedProfile);
@@ -56,6 +79,11 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(false);
         })();
     }, [])
+
+    const dismissNewYearBanner = () => {
+        setShowNewYearBanner(false);
+        void setMeta('newyear_banner_year', '');
+    };
 
     // NEW — put this in its place:
     const saveProfile = async (newProfile: NonNullable<Profile>) => {
@@ -125,7 +153,7 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     return (
         <ProfileContext.Provider
-            value={{ profile, weightHistory, isLoading, dbReady, saveProfile, updateProfile, updateGoals, clearStepGoal, clearCalorieGoal, updateWeight, deleteWeight  }}>
+            value={{ profile, weightHistory, isLoading, dbReady, saveProfile, updateProfile, updateGoals, clearStepGoal, clearCalorieGoal, updateWeight, deleteWeight, showNewYearBanner, dismissNewYearBanner  }}>
             {children}
         </ProfileContext.Provider>
     );
