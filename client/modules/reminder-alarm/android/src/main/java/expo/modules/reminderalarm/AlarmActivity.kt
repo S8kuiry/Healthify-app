@@ -71,6 +71,7 @@ class AlarmActivity : Activity() {
         val label = intent.getStringExtra("REMINDER_LABEL") ?: "Reminder"
         val id = intent.getStringExtra("REMINDER_ID") ?: ""
         val timestamp = intent.getLongExtra("TIMESTAMP", 0L)
+        val repeat = intent.getBooleanExtra("REPEAT", false)
 
         // Unit Converter Utility: DP to Pixels
         val dp = { value: Int -> (value * resources.displayMetrics.density).toInt() }
@@ -195,12 +196,24 @@ class AlarmActivity : Activity() {
             )
 
             setOnClickListener {
-                val serviceIntent = Intent(this@AlarmActivity, AlarmService::class.java)
-                stopService(serviceIntent)
-                
-                if (timestamp > 0L) {
+                // Route the stop through the service's own ACTION_DISMISS handler
+                // (which calls stopSelf) rather than stopService(). AlarmService
+                // returns START_STICKY, so a bare stopService() can be undone by the
+                // OS re-delivering the start intent — resurrecting the service and
+                // spinning up a fresh looping MediaPlayer, leaving a "dead ring" that
+                // outlives this screen.
+                val dismissIntent = Intent(this@AlarmActivity, AlarmService::class.java).apply {
+                    action = "ACTION_DISMISS"
+                }
+                startService(dismissIntent)
+
+                // Only DAILY reminders re-arm for the next day. One-off ("Once")
+                // reminders must not resurrect themselves — previously every alarm
+                // rescheduled on dismiss, so "Once" alarms (and even deleted ones
+                // that fired before deletion) kept coming back.
+                if (repeat && timestamp > 0L) {
                     val oneDayMs = 24 * 60 * 60 * 1000L
-                    AlarmScheduler.schedule(this@AlarmActivity, id, label, timestamp + oneDayMs)
+                    AlarmScheduler.schedule(this@AlarmActivity, id, label, timestamp + oneDayMs, repeat = true)
                 }
                 finish()
             }

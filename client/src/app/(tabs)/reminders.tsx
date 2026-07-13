@@ -7,6 +7,7 @@ import ReminderSearchBar from '@/components/reminder-ui/ReminderSearchBar';
 import ReminderListItem from '@/components/reminder-ui/ReminderListItem';
 import { useReminders } from '@/context/reminderContext';
 import { useAppColors } from '@/hooks/use-app-colors';
+import { Feather } from '@expo/vector-icons';
 
 export default function RemindersScreen() {
   const { reminders, isLoading } = useReminders();
@@ -50,18 +51,24 @@ export default function RemindersScreen() {
           </View>
 
 
-          <Pressable
-            onPress={() => router.push('/reminders/edit')}
-            className="border-accent  bg-cardBackground/70"
-            style={{ padding: 10, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', marginBottom: 12 }}
-          >
-            <Text className="text-accent font-bold text-xs" style={{ fontWeight: '600' }}>+ Add reminder</Text>
-          </Pressable>
+          <View className="flex flex-row items-center justify-between mb-4 mt-6 gap-4">
+            <Pressable
+              onPress={() => router.push('/settings/r_settings')}
+              className="border-accent  bg-cardBackground/60"
+              style={{ padding: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', marginBottom: 12 }}
+            >
+              <Feather name="settings" size={13} color={colors.textSecondary} />
+            </Pressable>
 
+            <Pressable
+              onPress={() => router.push('/reminders/edit')}
+              className="border-accent  bg-cardBackground/60"
+              style={{ padding: 8, borderWidth: 1, borderStyle: 'dashed', borderRadius: 8, alignItems: 'center', marginBottom: 12 }}
+            >
+              <Text className="text-accent font-bold text-xs" style={{ fontWeight: '600' }}>+ Add reminder</Text>
+            </Pressable>
 
-
-
-
+          </View>
 
         </View>
 
@@ -83,9 +90,9 @@ export default function RemindersScreen() {
         <View className="mb-4 mt-6  flex-1">
           <Text className="text-textPrimary text-xs font-black tracking-tight uppercase mb-3 px-1">Your Reminders</Text>
 
-          {reminders.length > 0 ? (
+          {filtered.length > 0 ? (
             <FlatList
-              data={reminders}
+              data={filtered}
               keyExtractor={(item) => item.id}
               showsVerticalScrollIndicator={false}
               style={{ flex: 1 }}
@@ -99,26 +106,26 @@ export default function RemindersScreen() {
               </View>
 
               <Text className="text-textPrimary text-xs font-bold tracking-tight mb-1">
-            No reminders yet
-          </Text>
-         
+                {debouncedSearch.trim() ? 'No matches' : 'No reminders yet'}
+              </Text>
+
 
 
 
               <View className="flex-row items-center py-4  ">
                 <View className="h-2 w-[2px] bg-accent mr-1.5" />
                 <Text className="text-textSecondary text-[9px] font-bold tracking-[1px] uppercase">
-                  {search ? 'No reminders match your search' : 'No reminders yet — type one above to get started'}
+                  {debouncedSearch.trim() ? 'No reminders match your search' : 'No reminders yet — tap + to add one'}
                 </Text>
               </View>
-              </View>
+            </View>
           )}
 
 
-            </View>
+        </View>
 
 
-       
+
       </View>
       <ExactAlarmPermissionModal />
     </ScreenContainer>

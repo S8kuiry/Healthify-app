@@ -10,6 +10,7 @@ class AlarmReceiver : BroadcastReceiver() {
         val id = intent.getStringExtra("REMINDER_ID") ?: return
         val label = intent.getStringExtra("REMINDER_LABEL") ?: "Reminder Alert"
         val timestamp = intent.getLongExtra("TIMESTAMP", 0L)
+        val repeat = intent.getBooleanExtra("REPEAT", false)
 
         // 1. Kickstart the foreground service — it plays the alarm audio AND posts the
         //    full-screen-intent notification that reliably launches AlarmActivity from
@@ -18,6 +19,7 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra("REMINDER_ID", id)
             putExtra("REMINDER_LABEL", label)
             putExtra("TIMESTAMP", timestamp)
+            putExtra("REPEAT", repeat)
         }
         ContextCompat.startForegroundService(context, serviceIntent)
 
@@ -28,6 +30,7 @@ class AlarmReceiver : BroadcastReceiver() {
             putExtra("REMINDER_ID", id)
             putExtra("REMINDER_LABEL", label)
             putExtra("TIMESTAMP", timestamp)
+            putExtra("REPEAT", repeat)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
         try {

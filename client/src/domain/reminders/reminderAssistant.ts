@@ -68,13 +68,6 @@ function describeSchedule(t: ParsedTimeDraft): string {
   const timeLabel = t.time ? formatTime12h(t.time) : '—';
   // Only surface a date for one-off reminders on a day other than today.
   const showDate = t.repeat === 'once' && !!t.date && !isToday(t.date);
-  const cadence = t.repeat === 'daily' ? 'every day' : showDate ? `on ${formatDateNice(t.date!)}` : null;
-
-  if (t.fireCount > 1) {
-    const todayOnly = t.repeat === 'daily' && !t.repeatBurstDaily ? ' (today only)' : '';
-    const tail = cadence ? `, ${cadence}` : '';
-    return `${t.fireCount} times from ${timeLabel}${tail}${todayOnly}`;
-  }
 
   if (t.repeat === 'daily') return `every day at ${timeLabel}`;
   return showDate ? `on ${formatDateNice(t.date!)} at ${timeLabel}` : `at ${timeLabel}`;
@@ -86,7 +79,9 @@ export function getAssistantState(label: string, times: ParsedTimeDraft[]): Assi
   const allTimesSet = times.every((t) => t.time !== null);
 
   if (!trimmed) {
-    return { message: 'What should I remind you about?', preview: null, ready: false, clarification: null };
+    // return { message: 'What should I remind you about?', preview: null, ready: false, clarification: null };
+        return { message: '', preview: null, ready: false, clarification: null };
+
   }
 
   // Ambiguous AM/PM takes priority over "missing time" — a wrong guess is
@@ -104,12 +99,12 @@ export function getAssistantState(label: string, times: ParsedTimeDraft[]): Assi
   }
 
   if (!allTimesSet) {
-    const popHint =
-      first && first.fireCount > 1
-        ? ` I'll send ${first.fireCount} nudges — just pick a start time below.`
+    const multiHint =
+      times.length > 1
+        ? ` Set the ${times.length} times below, or edit any of them.`
         : ' Just pick a time below, or tap a quick option.';
     return {
-      message: `Got it.${popHint}`,
+      message: `Got it.${multiHint}`,
       preview: `I'll remind you about "${trimmed}".`,
       ready: false,
       clarification: null,

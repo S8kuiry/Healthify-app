@@ -235,7 +235,10 @@ export function parseReminderInput(text: string): ParsedReminderDraft {
   const { fireCount, repeatBurstDaily } = extractRepeatBurst(safeText);
 
   const times: ParsedTimeDraft[] = frequencyCount
-    ? generateFrequencyTimes(Math.min(frequencyCount, 24)).map((t) => ({
+    ? // "N times a day": spread N slots 2h apart. If the text also named a start
+      // time (e.g. "wake me up at 7am, 3 times a day"), start from it; otherwise
+      // generateFrequencyTimes falls back to ~1 hour from now.
+      generateFrequencyTimes(Math.min(frequencyCount, 24), time).map((t) => ({
         time: t,
         repeat: 'daily',
         date: null,

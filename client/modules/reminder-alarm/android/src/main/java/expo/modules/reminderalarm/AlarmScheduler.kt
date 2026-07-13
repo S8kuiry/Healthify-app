@@ -10,9 +10,9 @@ import android.provider.Settings
 object AlarmScheduler {
     private const val FLAGS = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
-    fun schedule(context: Context, id: String, label: String, timestampMs: Long) {
+    fun schedule(context: Context, id: String, label: String, timestampMs: Long, repeat: Boolean = false) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        
+
         // Handle Android 12+ API exact alarm runtime capabilities checks
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
             val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
@@ -25,6 +25,9 @@ object AlarmScheduler {
             putExtra("REMINDER_ID", id)
             putExtra("REMINDER_LABEL", label)
             putExtra("TIMESTAMP", timestampMs)
+            // Whether this alarm re-arms itself for the next day after dismissal.
+            // Only daily reminders repeat; one-off ("Once") alarms must not.
+            putExtra("REPEAT", repeat)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(context, id.hashCode(), intent, FLAGS)
@@ -38,12 +41,18 @@ object AlarmScheduler {
 
     fun cancel(context: Context, id: String) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+        // Rebuild the SAME PendingIntent (same request code + component) rather than
+        // looking it up with FLAG_NO_CREATE. FLAG_NO_CREATE returns null when no
+        // cached instance is found — which happens after a fresh APK install / process
+        // restart, since the in-memory PendingIntent is gone even though the OS still
+        // holds the scheduled alarm. That null silently skipped the cancel and left the
+        // alarm to fire after deletion. Recreating it with FLAG_UPDATE_CURRENT (matching
+        // schedule()) always yields a token that cancels the underlying OS alarm.
         val intent = Intent(context, AlarmReceiver::class.java)
-        val pendingIntent = PendingIntent.getBroadcast(context, id.hashCode(), intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE)
-        
-        if (pendingIntent != null) {
-            alarmManager.cancel(pendingIntent)
-            pendingIntent.cancel()
-        }
+        val pendingIntent = PendingIntent.getBroadcast(context, id.hashCode(), intent, FLAGS)
+
+        alarmManager.cancel(pendingIntent)
+        pendingIntent.cancel()
     }
 }

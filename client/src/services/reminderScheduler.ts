@@ -109,46 +109,43 @@ export async function scheduleTime(
     const uniqueAlarmId = `alarm_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     const triggerTimestampMs = baseTrigger.getTime();
 
-    // Hand off configuration to the background lifecycle worker thread
-    await ReminderAlarmModule.scheduleAlarm(uniqueAlarmId, label, triggerTimestampMs);
+    // Hand off configuration to the background lifecycle worker thread. `repeat`
+    // tells the native layer whether to re-arm the alarm for the next day after
+    // dismissal — only DAILY reminders do; one-off "Once" alarms fire exactly once.
+    const isDailyRepeat = normalized.repeat === 'daily';
+    await ReminderAlarmModule.scheduleAlarm(uniqueAlarmId, label, triggerTimestampMs, isDailyRepeat);
     
     // Return wrapped inside an array to cleanly conform with your database schema
     return [uniqueAlarmId];
   }
 
 
-    const ids: string[] = [];
+    // -------------------------------------------------------------
+    // 2. iOS ROUTE: one scheduled notification per time slot. Each reminder
+    //    time is its own alarm — "N times a day" is modeled as N separate time
+    //    rows (see the editor), so there's no per-time burst here.
+    // -------------------------------------------------------------
     const isDaily = normalized.repeat === 'daily';
-    const burstRepeatsDaily = isDaily && normalized.repeatBurstDaily;
-    const fireCount = normalized.fireCount;
-    const intervalSeconds = normalized.fireIntervalSeconds;
+    const fireDate = new Date(baseTrigger.getTime());
 
-
-  
-    for (let i = 0; i < fireCount; i++) {
-      const fireDate = new Date(baseTrigger.getTime() + i * intervalSeconds * 1000);
-      const thisFireRepeatsDaily = i === 0 ? isDaily : burstRepeatsDaily;
-
-      // Safety net: if a one-off fireDate is in the past, bump it forward by a day
-      // to avoid silently scheduling "in the past" (which won't fire).
-      if (!thisFireRepeatsDaily && fireDate.getTime() <= Date.now()) {
-        fireDate.setDate(fireDate.getDate() + 1);
-      }
-  
-      const id = await Notifications.scheduleNotificationAsync({
-        content: { title: 'HealthApp', body: label },
-        trigger: thisFireRepeatsDaily
-          ? buildRepeatingTrigger(fireDate.getHours(), fireDate.getMinutes())
-          : {
-              type: Notifications.SchedulableTriggerInputTypes.DATE,
-              date: fireDate,
-              channelId: CHANNEL_ID,
-            },
-      });
-      ids.push(id);
+    // Safety net: if a one-off fireDate is in the past, bump it forward by a day
+    // to avoid silently scheduling "in the past" (which won't fire).
+    if (!isDaily && fireDate.getTime() <= Date.now()) {
+      fireDate.setDate(fireDate.getDate() + 1);
     }
-  
-    return ids;
+
+    const id = await Notifications.scheduleNotificationAsync({
+      content: { title: 'HealthApp', body: label },
+      trigger: isDaily
+        ? buildRepeatingTrigger(fireDate.getHours(), fireDate.getMinutes())
+        : {
+            type: Notifications.SchedulableTriggerInputTypes.DATE,
+            date: fireDate,
+            channelId: CHANNEL_ID,
+          },
+    });
+
+    return [id];
   }
 
 
@@ -163,24 +160,3 @@ export async function scheduleTime(
       }
     }
   }
-
-
-  export async function snoozeNotification(label: string, delayMinutes: number): Promise<void> {
-  if (Platform.OS === 'android') {
-    const uniqueSnoozeId = `alarm_snooze_${Date.now()}`;
-    const targetTimeMs = Date.now() + delayMinutes * 60 * 1000;
-    
-    // Route snooze records using absolute Unix epoch timing directly to the native module
-    await ReminderAlarmModule.scheduleAlarm(uniqueSnoozeId, label, targetTimeMs);
-  } else {
-    // Maintain standard iOS relative time interval handling mechanics
-    await Notifications.scheduleNotificationAsync({
-      content: { title: 'HealthApp', body: label },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
-        seconds: delayMinutes * 60,
-        repeats: false,
-      },
-    });
-  }
-}

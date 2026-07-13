@@ -9,8 +9,13 @@ import android.os.Build
 import android.provider.Settings
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import android.media.RingtoneManager // 🔊 Essential for managing system playback
+import android.media.Ringtone        // 🔊 Tracks the active audio instance
 
 class ReminderAlarmModule : Module() {
+  // 🔊 Tracks the ringtone currently playing for preview
+  private var currentPreviewRingtone: Ringtone? = null
+
   private fun applicationContext(): Context {
     return appContext.reactContext?.applicationContext
       ?: appContext.currentActivity?.applicationContext
@@ -62,12 +67,49 @@ class ReminderAlarmModule : Module() {
       }
     }
 
-    AsyncFunction("scheduleAlarm") { id: String, label: String, timestampMs: Double ->
-      AlarmScheduler.schedule(applicationContext(), id, label, timestampMs.toLong())
+    AsyncFunction("scheduleAlarm") { id: String, label: String, timestampMs: Double, repeat: Boolean ->
+      AlarmScheduler.schedule(applicationContext(), id, label, timestampMs.toLong(), repeat)
     }
 
     AsyncFunction("cancelAlarm") { id: String ->
       AlarmScheduler.cancel(applicationContext(), id)
     }
+
+    // Retrieve the list of system alarms (ringtones) available on the device
+
+    AsyncFunction("getSystemAlarms") { ->
+      val ringtoneManager = RingtoneManager(applicationContext()).apply {
+          setType(RingtoneManager.TYPE_ALARM)
+      }
+      val cursor = ringtoneManager.cursor
+      val alarmList = ArrayList<Map<String, String>>()
+
+      while (cursor.moveToNext()) {
+          val title = cursor.getString(RingtoneManager.TITLE_COLUMN_INDEX)
+          val uri = ringtoneManager.getRingtoneUri(cursor.position).toString()
+          alarmList.add(mapOf("title" to title, "uri" to uri))
+      }
+      alarmList
+    }
+
+
+    // 🔊 1. Play the selected ringtone preview
+    AsyncFunction("playAlarmPreview") { uriString: String ->
+      // Stop whatever tone is currently playing before starting a new one
+      currentPreviewRingtone?.stop()
+
+      val uri = Uri.parse(uriString)
+      currentPreviewRingtone = RingtoneManager.getRingtone(applicationContext(), uri)
+      currentPreviewRingtone?.play()
+    }
+
+    // 🔊 2. Stop the playback (useful when user leaves the screen)
+    AsyncFunction("stopAlarmPreview") { ->
+      currentPreviewRingtone?.stop()
+      currentPreviewRingtone = null
+    }
+
+
+
   }
 }

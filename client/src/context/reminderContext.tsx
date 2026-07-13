@@ -8,7 +8,7 @@ import {
   deleteReminder as repoDelete,
   rescheduleAllReminders,
 } from '@/db/reminderRepo';
-import { snoozeNotification, ensureReminderChannel } from '@/services/reminderScheduler';
+import { ensureReminderChannel } from '@/services/reminderScheduler';
 import type { Reminder, ParsedTimeDraft } from '@/domain/reminders/types';
 import { MOCK_REMINDERS } from '@/test/mock';
 import { useProfile } from '@/context/profileContext';
@@ -21,7 +21,6 @@ type ReminderContextValue = {
   updateReminder: (id: string, label: string, times: ParsedTimeDraft[]) => Promise<void>;
   toggleReminder: (id: string, enabled: boolean) => Promise<void>;
   deleteReminder: (id: string) => Promise<void>;
-  snoozeReminder: (label: string, delayMinutes: number) => Promise<void>;
 };
 
 const ReminderContext = createContext<ReminderContextValue | null>(null);
@@ -113,17 +112,9 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
     }
   }, [refresh]);
 
-  const snoozeReminder = useCallback(async (label: string, delayMinutes: number) => {
-    try {
-      await snoozeNotification(label, delayMinutes);
-    } catch (err) {
-      console.warn('[ReminderProvider] snooze failed:', err);
-    }
-  }, []);
-
   return (
     <ReminderContext.Provider
-      value={{ reminders, isLoading, refresh, createReminder, updateReminder, toggleReminder, deleteReminder, snoozeReminder }}
+      value={{ reminders, isLoading, refresh, createReminder, updateReminder, toggleReminder, deleteReminder }}
     >
       {children}
     </ReminderContext.Provider>

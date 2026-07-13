@@ -104,7 +104,7 @@ export default function ExactAlarmPermissionModal() {
               className="flex flex-1 rounded-full py-2 items-center justify-center bg-accent/10 border border-accent border-dashed active:opacity-85"
             >
               <Text className="text-accent text-xs font-black tracking-wide uppercase">
-                Configure
+                Allow
               </Text>
             </Pressable>
           </View>

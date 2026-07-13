@@ -1,7 +1,0 @@
-expo.modules.steptracker.step-tracker-pngs-0 D:\HealthApp\client\modules\step-tracker\android\build\generated\res\pngs\release
-expo.modules.steptracker.step-tracker-resValues-1 D:\HealthApp\client\modules\step-tracker\android\build\generated\res\resValues\release
-expo.modules.steptracker.step-tracker-mergeReleaseResources-2 D:\HealthApp\client\modules\step-tracker\android\build\intermediates\incremental\release\mergeReleaseResources\merged.dir
-expo.modules.steptracker.step-tracker-mergeReleaseResources-3 D:\HealthApp\client\modules\step-tracker\android\build\intermediates\incremental\release\mergeReleaseResources\stripped.dir
-expo.modules.steptracker.step-tracker-release-4 D:\HealthApp\client\modules\step-tracker\android\build\intermediates\merged_res\release\mergeReleaseResources
-expo.modules.steptracker.step-tracker-main-5 D:\HealthApp\client\modules\step-tracker\android\src\main\res
-expo.modules.steptracker.step-tracker-release-6 D:\HealthApp\client\modules\step-tracker\android\src\release\res

@@ -61,7 +61,7 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
   const weightLine = colorScheme === 'dark' ? 'rgb(245, 172, 71)' : 'rgb(244, 171, 76)';
   const barTrack = colorScheme === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(71, 85, 105, 0.08)';
   const gridColor = colorScheme === 'dark' ? '#94A3B8' : '#64748B';
-  const dotFill = colorScheme === 'dark' ? '#161E31' : '#FFFFFF';
+  const dotFill = colorScheme === 'dark' ? '#FFFFFF' : '#FFFFFF';
 
   const stats = useMemo(() => {
     const now = new Date();
@@ -344,8 +344,8 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
           <View className="flex-row items-center gap-1.5 px-4 pb-4 pt-1">
             <Feather name="award" size={12} color={accent} />
             <View className="flex-row items-center gap-1.5">
-              <Text className="text-cardbackground text-[11px] font-semibold"> Best day this Month  :   </Text>
-              <Text className='text-cardbackground text-[11px] font-semibold'>{stats.bestDay.steps.toLocaleString()} steps on {formatShortDayMonth(stats.bestDay.date)}</Text>
+              <Text className="text-textPrimary text-[11px] font-semibold"> Best day this Month  :  </Text>
+              <Text className='text-textPrimary text-[11px] font-semibold'>{stats.bestDay.steps.toLocaleString()} steps on {formatShortDayMonth(stats.bestDay.date)}</Text>
             </View>
 
           </View>
