@@ -178,7 +178,7 @@ export default function SoundSettingsScreen() {
           style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}
           className="flex-1 rounded-2xl py-4 items-center justify-center border border-backgroundElement/90 bg-cardBackground/50"
         >
-          <Text className=" text-base font-semibold">Cancel</Text>
+          <Text className=" text-textPrimary/80 font-semibold">Cancel</Text>
         </Pressable>
 
         <Pressable

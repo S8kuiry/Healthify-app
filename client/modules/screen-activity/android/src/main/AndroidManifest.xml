@@ -1,2 +1,36 @@
-<manifest>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Required to run ScreenActivityService as a foreground service (API 28+). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Required on API 34+ to declare the foreground service's type (dataSync fits a
+         passive background-tracking service that isn't playing media, doing location,
+         etc.). Must match the foregroundServiceType set on the <service> tag below. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Required on API 33+ (Android 13) to post any notification, including the mandatory
+         foreground-service notification. Without this, startForeground() will fail at
+         runtime on API 33+ unless the user has granted notification permission. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Required to call UsageStatsManager for the future per-app usage breakdown. This is
+         a "special access" permission - it cannot be granted via a runtime dialog like a
+         normal permission. The user must manually enable it via the Settings screen opened
+         by ScreenActivityModule.openUsageAccessSettings(). tools:ignore silences the lint
+         warning that normally flags apps declaring a protected/signature permission. -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <application>
+        <!-- <receiver
+            android:name="expo.modules.screenactivity.SleepTrackingAlarmReceiver"
+            android:exported="false" /> -->
+        <service
+            android:name="expo.modules.screenactivity.ScreenActivityService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
+    </application>
+
 </manifest>

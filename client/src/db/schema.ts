@@ -35,13 +35,17 @@ export async function runMigrations() {
 
 
     CREATE TABLE IF NOT EXISTS daily_activity (
-  date TEXT PRIMARY KEY,        -- 'YYYY-MM-DD', local date
-  steps INTEGER NOT NULL DEFAULT 0,
-  calories INTEGER NOT NULL DEFAULT 0,
-  step_goal INTEGER NOT NULL DEFAULT 0,    -- snapshot of goal that day (optional but useful for history accuracy)
-  calorie_goal INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
-);
+      date TEXT PRIMARY KEY,        -- 'YYYY-MM-DD', local date
+      steps INTEGER NOT NULL DEFAULT 0,
+      calories INTEGER NOT NULL DEFAULT 0,
+      step_goal INTEGER NOT NULL DEFAULT 0,    -- snapshot of goal that day (optional but useful for history accuracy)
+      calorie_goal INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+
+
+
 
 
 
@@ -92,6 +96,48 @@ export async function runMigrations() {
 
     -- Seed the single volume row so a plain SELECT always finds it.
     INSERT OR IGNORE INTO reminder_volume (id, volume) VALUES (1, 100);
+
+
+
+
+
+-- ============================================================
+-- SLEEP TRACKER — add this alongside screen_sessions and
+-- daily_screen_summary in the same runMigrations() template literal.
+-- ============================================================
+
+
+
+    CREATE TABLE IF NOT EXISTS sleep_settings (
+      id INTEGER PRIMARY KEY CHECK (id = 1),  -- enforces a single row
+      window_start TEXT NOT NULL DEFAULT '23:00',  -- 'HH:mm', 24-hour
+      window_end TEXT NOT NULL DEFAULT '07:00'     -- 'HH:mm', 24-hour
+    );  
+ 
+    -- Seed the single row so a plain SELECT always finds it, matching the
+    -- reminder_volume table's seeding pattern.
+    INSERT OR IGNORE INTO sleep_settings (id, window_start, window_end)
+    VALUES (1, '23:00', '07:00');
+
+
+  CREATE TABLE IF NOT EXISTS screen_sessions (
+    id TEXT PRIMARY KEY,
+    date TEXT NOT NULL,              -- 'YYYY-MM-DD', local date of start_time
+    start_time TEXT NOT NULL,        -- ISO timestamp
+    end_time TEXT,                   -- ISO timestamp; NULL while session is ongoing
+    duration_minutes INTEGER         -- NULL until end_time is set
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_screen_sessions_date ON screen_sessions(date);
+
+
+  CREATE TABLE IF NOT EXISTS daily_screen_summary (
+    date TEXT PRIMARY KEY,           -- 'YYYY-MM-DD'
+    total_minutes INTEGER NOT NULL DEFAULT 0,
+    session_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
 
 
 
