@@ -175,4 +175,56 @@ fun goals(context: Context): Pair<Int, Int> {
   fun getRawStepsSinceReboot(context: Context): Int {
     return prefs(context).getInt(KEY_BASELINE_RAW, -1)
   }
+
+  /**
+   * Sync steps from system counter. Returns today's steps, or -1 if sync failed.
+   * This is safe to call independently - it doesn't interfere with sensor events.
+   * Used when service wasn't running to capture missed steps.
+   */
+  fun syncSystemSteps(context: Context, currentRawSteps: Int): Int {
+    if (currentRawSteps < 0) return -1
+
+    val p = prefs(context)
+    val today = todayDateString()
+    val storedDate = p.getString(KEY_BASELINE_DATE, null)
+
+    if (storedDate != null && storedDate != today) {
+      val finalSteps = p.getInt(KEY_BASELINE_TODAY_STEPS, 0)
+      val finalCalories = activeCalories(context, finalSteps)
+      val (stepGoal, calorieGoal) = goals(context)
+      DailyActivityStore.upsert(
+        context, storedDate, finalSteps, finalCalories, stepGoal, calorieGoal
+      )
+      p.edit()
+        .putString(KEY_BASELINE_DATE, today)
+        .putInt(KEY_BASELINE_RAW, currentRawSteps)
+        .putInt(KEY_BASELINE_TODAY_STEPS, 0)
+        .apply()
+      return 0
+    }
+
+    val baselineRaw = p.getInt(KEY_BASELINE_RAW, -1)
+    if (baselineRaw < 0) {
+      p.edit()
+        .putString(KEY_BASELINE_DATE, today)
+        .putInt(KEY_BASELINE_RAW, currentRawSteps)
+        .putInt(KEY_BASELINE_TODAY_STEPS, 0)
+        .apply()
+      return 0
+    }
+
+    val baselineTodaySteps = p.getInt(KEY_BASELINE_TODAY_STEPS, 0)
+    val todaySteps = if (currentRawSteps >= baselineRaw) {
+      baselineTodaySteps + (currentRawSteps - baselineRaw)
+    } else {
+      baselineTodaySteps
+    }
+
+    p.edit()
+      .putInt(KEY_BASELINE_RAW, currentRawSteps)
+      .putInt(KEY_BASELINE_TODAY_STEPS, todaySteps)
+      .apply()
+
+    return todaySteps
+  }
 }

@@ -10,6 +10,8 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 
 class StepTrackerService : Service(), SensorEventListener {
@@ -24,6 +26,25 @@ class StepTrackerService : Service(), SensorEventListener {
 
   private lateinit var sensorManager: SensorManager
   private var stepSensor: Sensor? = null
+  private val handler = Handler(Looper.getMainLooper())
+
+  private val periodicFlushRunnable = object : Runnable {
+    override fun run() {
+      if (isRunning) {
+        StepTrackerEngine.flush(this@StepTrackerService)
+        handler.postDelayed(this, 5 * 60 * 1000)
+      }
+    }
+  }
+
+  private val periodicSyncRunnable = object : Runnable {
+    override fun run() {
+      if (isRunning) {
+        syncSystemStepCounter()
+        handler.postDelayed(this, 10 * 60 * 1000)
+      }
+    }
+  }
 
   override fun onCreate() {
     super.onCreate()
@@ -46,6 +67,9 @@ class StepTrackerService : Service(), SensorEventListener {
     stepSensor?.let {
       sensorManager.registerListener(this, it, SensorManager.SENSOR_DELAY_NORMAL)
     }
+
+    handler.postDelayed(periodicFlushRunnable, 5 * 60 * 1000)
+    handler.postDelayed(periodicSyncRunnable, 10 * 60 * 1000)
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -64,6 +88,8 @@ class StepTrackerService : Service(), SensorEventListener {
 
   override fun onDestroy() {
     isRunning = false
+    handler.removeCallbacks(periodicFlushRunnable)
+    handler.removeCallbacks(periodicSyncRunnable)
     StepTrackerEngine.flush(this)
     if (::sensorManager.isInitialized) {
       sensorManager.unregisterListener(this)
@@ -85,6 +111,18 @@ class StepTrackerService : Service(), SensorEventListener {
       promoteToForeground(notification)
     } catch (e: Exception) {
       Log.e(TAG, "Failed to show foreground notification", e)
+    }
+  }
+
+  private fun syncSystemStepCounter() {
+    try {
+      val rawSteps = StepCounterStore.getRawStepsSinceReboot(this)
+      if (rawSteps >= 0) {
+        StepTrackerEngine.syncFromSystemCounter(this, rawSteps)
+        Log.d(TAG, "Synced system step counter: $rawSteps")
+      }
+    } catch (e: Exception) {
+      Log.e(TAG, "Failed to sync system step counter", e)
     }
   }
 

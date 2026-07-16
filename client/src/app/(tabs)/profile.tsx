@@ -58,6 +58,12 @@ export default function ProfileScreen() {
     return yearActivity.map((r) => (r.date === today ? liveRow : r));
   }, [yearActivity, steps, calories, profile]);
 
+  // Newest-first, fully sorted list — memoized so it only recomputes when
+  // weightHistory actually changes, not on every render.
+  const displayEntries = useMemo(() => {
+    return [...weightHistory].sort((a, b) => b.date.localeCompare(a.date));
+  }, [weightHistory]);
+
   if (!profile) {
     return (
       <ScreenContainer>
@@ -65,9 +71,6 @@ export default function ProfileScreen() {
       </ScreenContainer>
     );
   }
-
-  const sortedHistory = [...weightHistory].sort((a, b) => a.date.localeCompare(b.date));
-  const latestEntries = sortedHistory.slice(-7);
 
   return (
     <ScreenContainer>
@@ -164,7 +167,7 @@ export default function ProfileScreen() {
           <View className="mb-2">
             <Text className="text-textPrimary text-xs font-black tracking-tight uppercase mb-3 px-1">History Log</Text>
 
-            <View className="bg-cardBackground rounded-3xl px-5 py-1 shadow-sm max-h-[250px]">
+            <View className="bg-cardBackground rounded-3xl px-5 py-1 shadow-sm">
 
               <View className="flex-row justify-between items-center py-3.5">
                 <Text className="text-textSecondary text-sm font-semibold flex-1">Weight Entry</Text>
@@ -175,21 +178,21 @@ export default function ProfileScreen() {
                 </Pressable>
               </View>
 
-              {latestEntries.length === 0 ? (
+              {displayEntries.length === 0 ? (
                 <View className="py-6 items-center">
                   <Text className="text-textMuted text-xs font-medium">No weight entries yet.</Text>
                 </View>
 
               ) : (
-                <ScrollView  showsVerticalScrollIndicator={false}>
-                {latestEntries
-                  .slice()
-                  .reverse()
-                  .map((entry, index) => (
+                <ScrollView
+                  style={{ maxHeight: 250 }}
+                  showsVerticalScrollIndicator={false}
+                  nestedScrollEnabled
+                >
+                {displayEntries.map((entry) => (
                     <View
                       key={entry.id}
-                      className={`flex-row justify-between items-center py-3.5 ${index !== latestEntries.length - 1 ? '' : ''
-                        }`}
+                      className="flex-row justify-between items-center py-3.5"
                     >
 
                       <View className="text-textSecondary text-xs font-semibold flex-1 flex-row items-center gap-2 ">

@@ -215,7 +215,7 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
               <Feather name="zap" size={11} color={iconColor} />
               <Text className="text-textSecondary text-[9px] font-bold tracking-widest uppercase mb-1">Kcal</Text>
             </View>
-            <Text className="text-textPrimary text-base font-black tracking-tight " style={{ fontVariant: ['tabular-nums'] }}>
+            <Text className="text-textPrimary  font-black tracking-tight " style={{ fontVariant: ['tabular-nums'] }}>
               {stats.totalCalories.toLocaleString()}
             </Text>
 
@@ -232,7 +232,7 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
               <Text className="text-textMuted text-sm font-bold">—</Text>
             ) : (
               <Text
-                className="text-base font-black tracking-tight"
+                className="text-textPrimary  font-black tracking-tight"
                 style={{ fontVariant: ['tabular-nums'], color: stats.weightChange > 0 ? '#DC2626' : stats.weightChange < 0 ? accent : undefined }}
               >
                 {stats.weightChange > 0 ? '+' : ''}

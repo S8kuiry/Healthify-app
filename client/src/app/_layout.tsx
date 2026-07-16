@@ -54,13 +54,13 @@ function RootNavigation() {
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-    <ProfileProvider>
-      <ActivityProvider>
-        <ReminderProvider>
-          <RootNavigation />
-        </ReminderProvider>
-      </ActivityProvider>
-    </ProfileProvider>
-  </SafeAreaProvider>
+      <ProfileProvider>
+        <ActivityProvider>
+          <ReminderProvider>
+            <RootNavigation />
+          </ReminderProvider>
+        </ActivityProvider>
+      </ProfileProvider>
+    </SafeAreaProvider>
   );
 }
