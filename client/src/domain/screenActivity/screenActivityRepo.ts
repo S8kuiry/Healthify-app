@@ -187,12 +187,19 @@ export async function getWeeklyPoints(startDate: string, endDate: string): Promi
  *
  * Safe to call repeatedly (e.g. once per app startup) - every DELETE here is
  * naturally idempotent, nothing errors if there's nothing left to remove.
+ * Also cleans up any orphaned sessions from previous app crashes.
  */
 export async function pruneOldScreenData(): Promise<void> {
   const db = await getDb();
   const settings = await getSleepSettings();
 
   const today = new Date();
+
+  // Clean up orphaned sessions (still open from a previous run) by treating them as closed now.
+  const orphaned = await getOpenSession();
+  if (orphaned !== null) {
+    await closeSession(orphaned.id, new Date().toISOString());
+  }
 
   const garbageCutoff = new Date(today);
   garbageCutoff.setDate(garbageCutoff.getDate() - GARBAGE_RETENTION_DAYS);

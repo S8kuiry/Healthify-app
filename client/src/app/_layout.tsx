@@ -7,6 +7,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ProfileProvider, useProfile } from '@/context/profileContext';
 import { ActivityProvider } from '@/context/activityContext';
 import { ReminderProvider } from '@/context/reminderContext';
+import { initScreenActivityTracking } from '@/domain/screenActivity/screenActivityListener';
 
 /**
  * Set the notification handler for the app.
@@ -20,6 +21,14 @@ Notifications.setNotificationHandler({
     shouldShowBanner: true,
     shouldShowList: true,
   }),
+});
+
+/**
+ * Initialize screen activity tracking (sleep detection).
+ * Must run once on startup before profile is loaded.
+ */
+initScreenActivityTracking().catch((err) => {
+  console.error('[ScreenActivityListener] Initialization failed:', err);
 });
 
 

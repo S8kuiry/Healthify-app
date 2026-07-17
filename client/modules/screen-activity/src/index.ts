@@ -17,6 +17,8 @@ interface ScreenActivityNativeModule {
   startTracking(): Promise<void>;
   stopTracking(): Promise<void>;
   isTracking(): Promise<boolean>;
+  scheduleSleepTracking(): Promise<void>;
+  cancelSleepTracking(): Promise<void>;
   hasUsageAccessPermission(): Promise<boolean>;
   openUsageAccessSettings(): Promise<void>;
   addListener(eventName: 'onScreenEvent', listener: (event: ScreenEvent) => void): EventSubscription;
@@ -63,6 +65,23 @@ export function hasUsageAccessPermission(): Promise<boolean> {
  */
 export function openUsageAccessSettings(): Promise<void> {
   return ScreenActivityModule.openUsageAccessSettings();
+}
+
+/**
+ * Schedules all sleep-tracking alarms (early reminder, final reminder, start, stop) based on
+ * the current sleep window from sleep_settings. Called on app startup and whenever sleep
+ * settings change. Native reads sleep_settings directly - no parameters needed.
+ */
+export function scheduleSleepTracking(): Promise<void> {
+  return ScreenActivityModule.scheduleSleepTracking();
+}
+
+/**
+ * Cancels all sleep-tracking alarms. Called when the user disables sleep tracking or updates
+ * settings.
+ */
+export function cancelSleepTracking(): Promise<void> {
+  return ScreenActivityModule.cancelSleepTracking();
 }
 
 /**

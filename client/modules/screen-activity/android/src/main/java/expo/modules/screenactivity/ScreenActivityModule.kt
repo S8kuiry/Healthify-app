@@ -58,6 +58,17 @@ class ScreenActivityModule : Module() {
       ScreenActivityEventDispatcher.hasListener()
     }
 
+    // Schedules the sleep-tracking alarms based on the current sleep_settings.
+    // Called on app startup and whenever sleep settings change.
+    AsyncFunction("scheduleSleepTracking") { ->
+      SleepTrackingAlarmScheduler.scheduleNext(applicationContext())
+    }
+
+    // Cancels all sleep-tracking alarms.
+    AsyncFunction("cancelSleepTracking") { ->
+      SleepTrackingAlarmScheduler.cancelAll(applicationContext())
+    }
+
     // --- Usage-access permission helpers (for the later per-app breakdown feature) ---
     // These are unrelated to the screen on/off receiver above (which needs no special
     // permission) - UsageStatsManager access requires the user to manually grant it via a

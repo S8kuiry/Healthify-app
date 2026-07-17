@@ -32,6 +32,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     setWeekData(rows);
   }, []);
 
+  // Initialize step tracking on mount / when dbReady changes (first load only)
   useEffect(() => {
     if (!profile || !dbReady || Platform.OS !== 'android') return;
 
@@ -90,7 +91,22 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       sub?.remove();
       appSub.remove();
     };
-  }, [profile, dbReady, refreshWeekFromDb]);
+  }, [dbReady, refreshWeekFromDb]);
+
+  // Separate effect: update goals without reinitializing listener
+  useEffect(() => {
+    if (!profile || !dbReady || Platform.OS !== 'android') return;
+
+    (async () => {
+      const stepTracker = await import('../../modules/step-tracker/src');
+      stepTracker.setActivityProfile(
+        profile.heightCm,
+        profile.weightKg,
+        profile.stepGoal ?? 0,
+        profile.calorieGoal ?? 0
+      );
+    })();
+  }, [profile.stepGoal, profile.calorieGoal, profile.heightCm, profile.weightKg, dbReady]);
 
   const calories = useMemo(() => {
     if (!profile || steps === null) return null;

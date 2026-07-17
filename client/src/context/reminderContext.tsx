@@ -34,6 +34,7 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
   const { dbReady } = useProfile();
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [notificationError, setNotificationError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     const rows = await getAllReminders();
@@ -55,8 +56,11 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
         await ensureReminderChannel();
         await Notifications.requestPermissionsAsync();
         await rescheduleAllReminders();
+        setNotificationError(null);
       } catch (err) {
-        console.warn('[ReminderProvider] notification setup failed:', err);
+        const errorMsg = err instanceof Error ? err.message : 'Failed to set up notifications';
+        console.error('[ReminderProvider] notification setup failed:', err);
+        setNotificationError(errorMsg);
       }
 
       if (cancelled) return;
@@ -64,7 +68,7 @@ export function ReminderProvider({ children }: { children: ReactNode }) {
       try {
         await refresh();
       } catch (err) {
-        console.warn('[ReminderProvider] refresh failed:', err);
+        console.error('[ReminderProvider] refresh failed:', err);
         if (!cancelled) setReminders(__DEV__ ? MOCK_REMINDERS : []);
       } finally {
         if (!cancelled) setIsLoading(false);

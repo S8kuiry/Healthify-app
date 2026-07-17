@@ -1,5 +1,7 @@
 package expo.modules.screenactivity
 
+import java.util.concurrent.CopyOnWriteArrayList
+
 /**
  * Represents a single screen state change captured by ScreenEventReceiver.
  *
@@ -25,15 +27,23 @@ data class ScreenEvent(
  */
 object ScreenActivityEventDispatcher {
 
-  private var listener: ((ScreenEvent) -> Unit)? = null
+  private val listeners = CopyOnWriteArrayList<(ScreenEvent) -> Unit>()
+  private var jsListener: ((ScreenEvent) -> Unit)? = null
+
+  /**
+   * Add a native listener (e.g., from ScreenActivityService for session writes).
+   * Multiple listeners can be registered simultaneously.
+   */
+  fun addListener(onEvent: (ScreenEvent) -> Unit) {
+    listeners.add(onEvent)
+  }
 
   /**
    * Called by ScreenActivityModule when a JS-side listener is registered (i.e. the app is
-   * actively listening for screen events). Only one listener is supported at a time, which
-   * matches how a single JS module instance will use this.
+   * actively listening for screen events). Only one JS listener is supported at a time.
    */
   fun setListener(onEvent: ((ScreenEvent) -> Unit)?) {
-    listener = onEvent
+    jsListener = onEvent
   }
 
   /**
@@ -43,8 +53,13 @@ object ScreenActivityEventDispatcher {
    * consumes these events (added in a later phase).
    */
   fun dispatch(event: ScreenEvent) {
-    listener?.invoke(event)
+    // Dispatch to all native listeners
+    for (listener in listeners) {
+      listener(event)
+    }
+    // Dispatch to JS listener if present
+    jsListener?.invoke(event)
   }
 
-  fun hasListener(): Boolean = listener != null
+  fun hasListener(): Boolean = listeners.isNotEmpty() || jsListener != null
 }

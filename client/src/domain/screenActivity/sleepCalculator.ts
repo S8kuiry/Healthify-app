@@ -44,6 +44,10 @@ function toMinutes(hhmm: string): number {
  * continuous screen-off gap inside [bedTime, wakeTime]. This is the whole
  * algorithm - no interruption counting, no distraction minutes, no stored
  * result, per the simplified plan.
+ *
+ * Returns null if no screen session data exists for the night, to distinguish
+ * from "no data yet" (window still in progress) vs "no tracking data" (window
+ * finished but no sessions recorded).
  */
 export async function getSleepForNight(nightDate: string): Promise<NightlySleep> {
   const settings = await getSleepSettings();
@@ -68,22 +72,38 @@ export async function getSleepForNight(nightDate: string): Promise<NightlySleep>
     [wakeTime.toISOString(), bedTime.toISOString()]
   );
 
+  // No screen sessions recorded for this night - cannot compute sleep.
+  // Return null to signal "no data" rather than defaulting to full window.
+  if (sessions.length === 0) {
+    return { nightDate, durationMinutes: null };
+  }
+
   let largestGapMinutes = 0;
   let cursor = bedTime.getTime();
 
   for (const session of sessions) {
-    const sessionStart = new Date(session.start_time).getTime();
-    // Ongoing session (end_time null) - treat "now" as its end for gap math,
-    // clipped to wakeTime below anyway.
-    const sessionEnd = session.end_time ? new Date(session.end_time).getTime() : Date.now();
-
-    const gapStart = cursor;
-    const gapEnd = Math.min(sessionStart, wakeTime.getTime());
-    if (gapEnd > gapStart) {
-      largestGapMinutes = Math.max(largestGapMinutes, Math.round((gapEnd - gapStart) / 60000));
+    if (!session.start_time) {
+      console.warn('[sleepCalculator] Skipping session with missing start_time');
+      continue;
     }
 
-    cursor = Math.max(cursor, sessionEnd);
+    try {
+      const sessionStart = new Date(session.start_time).getTime();
+      // Ongoing session (end_time null) - treat "now" as its end for gap math,
+      // clipped to wakeTime below anyway.
+      const sessionEnd = session.end_time ? new Date(session.end_time).getTime() : Date.now();
+
+      const gapStart = cursor;
+      const gapEnd = Math.min(sessionStart, wakeTime.getTime());
+      if (gapEnd > gapStart) {
+        largestGapMinutes = Math.max(largestGapMinutes, Math.round((gapEnd - gapStart) / 60000));
+      }
+
+      cursor = Math.max(cursor, sessionEnd);
+    } catch (err) {
+      console.warn('[sleepCalculator] Failed to parse session timestamps:', session, err);
+      continue;
+    }
   }
 
   // Final gap from the last session's end (or bedTime, if no sessions at

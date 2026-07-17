@@ -1,4 +1,5 @@
 import { getDb } from '@/db/client';
+import { scheduleSleepTracking } from '../../../modules/screen-activity/src';
 
 export interface SleepSettings {
   /** 'HH:mm', 24-hour, e.g. '23:00' */
@@ -16,13 +17,22 @@ function rowToSettings(row: any): SleepSettings {
 
 /**
  * Returns the current sleep window. The seed row inserted by runMigrations()
- * guarantees this always finds a row - no fallback/null-handling needed here.
+ * guarantees this always finds a row. Throws if row is missing or data is invalid.
  */
 export async function getSleepSettings(): Promise<SleepSettings> {
   const db = await getDb();
   const row = await db.getFirstAsync<any>(
     `SELECT window_start, window_end FROM sleep_settings WHERE id = 1;`
   );
+
+  if (!row) {
+    throw new Error('Sleep settings seed row not found. Database may not be initialized.');
+  }
+
+  if (!row.window_start || !row.window_end) {
+    throw new Error('Sleep settings are missing window_start or window_end.');
+  }
+
   return rowToSettings(row);
 }
 
@@ -34,6 +44,8 @@ export async function getSleepSettings(): Promise<SleepSettings> {
  * This only affects detection/reminders going forward - it does not touch
  * any already-logged screen_sessions data, and (per the simplified plan)
  * there's no past-nights table to retroactively recalculate anyway.
+ *
+ * Re-schedules sleep-tracking alarms to reflect the new window.
  */
 export async function updateSleepSettings(
   update: Partial<SleepSettings>
@@ -47,6 +59,11 @@ export async function updateSleepSettings(
   await db.runAsync(
     `UPDATE sleep_settings SET window_start = ?, window_end = ? WHERE id = 1;`,
     [windowStart, windowEnd]
+  );
+
+  // Re-schedule alarms for the new window
+  await scheduleSleepTracking().catch((err) =>
+    console.warn('[SleepSettingsRepo] Failed to reschedule sleep tracking:', err)
   );
 
   return { windowStart, windowEnd };

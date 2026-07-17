@@ -23,10 +23,26 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Required to schedule exact alarms (API 31+) for sleep window start/stop. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+
+    <!-- Required to re-arm alarms after device reboot. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Required for setExactAndAllowWhileIdle() on some devices. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
     <application>
-        <!-- <receiver
-            android:name="expo.modules.screenactivity.SleepTrackingAlarmReceiver"
-            android:exported="false" /> -->
+        <receiver
+            android:name="expo.modules.screenactivity.SleepAlarmReceiver"
+            android:exported="false" />
+        <receiver
+            android:name="expo.modules.screenactivity.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
         <service
             android:name="expo.modules.screenactivity.ScreenActivityService"
             android:foregroundServiceType="dataSync"
