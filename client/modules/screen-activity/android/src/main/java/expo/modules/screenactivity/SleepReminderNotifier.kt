@@ -18,12 +18,13 @@ object SleepReminderNotifier {
     ensureNotificationChannel(context)
 
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-      .setContentTitle("HealthApp")
-      .setContentText("Hey! Wind down your activity. Sleep tracking starts in 1 hour")
+      .setContentTitle("Healthify - Wind Down Time 🌙")
+      .setContentText("Ready to disconnect? Your sleep window begins in 1 hour. Let’s prep for a great rest.")
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_REMINDER)
       .setAutoCancel(true)
+      .setVibrate(longArrayOf(0, 150, 100))
       .build()
 
     try {
@@ -38,12 +39,13 @@ object SleepReminderNotifier {
     ensureNotificationChannel(context)
 
     val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-      .setContentTitle("HealthApp")
+      .setContentTitle("Healthify - Sleep Time 🌙")
       .setContentText("Time to tuck in! Sleep tracking starts in 10 minutes")
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_REMINDER)
       .setAutoCancel(true)
+      .setVibrate(longArrayOf(0, 200, 100, 200))
       .build()
 
     try {
@@ -62,11 +64,16 @@ object SleepReminderNotifier {
         val channel = NotificationChannel(
           CHANNEL_ID,
           "Sleep Reminders",
-          NotificationManager.IMPORTANCE_DEFAULT
+          NotificationManager.IMPORTANCE_HIGH
         ).apply {
-          description = "Reminders for your sleep schedule"
-          enableVibration(false)
-          setSound(null, null)
+          description = "Reminders for your sleep schedule with sound and vibration"
+          enableVibration(true)
+          setSound(
+            android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+            android.media.AudioAttributes.Builder()
+              .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+              .build()
+          )
         }
         manager.createNotificationChannel(channel)
       }

@@ -10,6 +10,8 @@ object DailyActivityStore {
   private const val TAG = "DailyActivityStore"
   private const val DB_NAME = "healthapp.db"
   private const val TABLE = "daily_activity"
+  private const val MAX_RETRIES = 3
+  private const val RETRY_DELAY_MS = 100L
   private var loggedDbPathOnce = false
 
   /**
@@ -33,13 +35,29 @@ object DailyActivityStore {
     stepGoal: Int,
     calorieGoal: Int
   ) {
+    upsertWithRetry(context, date, steps, calories, stepGoal, calorieGoal, 1)
+  }
+
+  private fun upsertWithRetry(
+    context: Context,
+    date: String,
+    steps: Int,
+    calories: Int,
+    stepGoal: Int,
+    calorieGoal: Int,
+    attempt: Int
+  ) {
     // IMPORTANT: Must use the same DB file location as expo-sqlite.
     // expo-sqlite defaultDatabaseDirectory on Android is: context.filesDir + "/SQLite"
     val dbDir = File(context.filesDir, "SQLite")
     if (!dbDir.exists()) dbDir.mkdirs()
     val dbFile = File(dbDir, DB_NAME)
-    val db = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+    var db: SQLiteDatabase? = null
     try {
+      db = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
+      // Enable WAL mode to handle concurrent access from screen activity service
+      db.enableWriteAheadLogging()
+
       if (!loggedDbPathOnce) {
         loggedDbPathOnce = true
         Log.w(TAG, "using sqlite path=${db.path} (expected expo-sqlite dir=${dbDir.absolutePath})")
@@ -61,10 +79,18 @@ object DailyActivityStore {
         values.put("date", date)
         db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_ABORT)
       }
+      Log.d(TAG, "Successfully upserted activity for date=$date steps=$steps on attempt $attempt")
     } catch (e: Exception) {
-      Log.e(TAG, "upsert failed for date=$date steps=$steps", e)
+      if (attempt < MAX_RETRIES && (e.message?.contains("database is locked") == true ||
+          e is android.database.sqlite.SQLiteDatabaseLockedException)) {
+        Log.w(TAG, "Database locked during upsert (attempt $attempt/$MAX_RETRIES), retrying...", e)
+        Thread.sleep(RETRY_DELAY_MS)
+        upsertWithRetry(context, date, steps, calories, stepGoal, calorieGoal, attempt + 1)
+      } else {
+        Log.e(TAG, "upsert failed for date=$date steps=$steps on attempt $attempt", e)
+      }
     } finally {
-      db.close()
+      db?.close()
     }
   }
 }

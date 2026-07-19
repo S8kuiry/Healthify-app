@@ -25,9 +25,10 @@ object SleepSummaryNotifier {
       .setContentTitle("HealthApp")
       .setContentText(text)
       .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-      .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+      .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setCategory(NotificationCompat.CATEGORY_STATUS)
       .setAutoCancel(true)
+      .setVibrate(longArrayOf(0, 200, 100, 200))
       .build()
 
     try {
@@ -46,11 +47,16 @@ object SleepSummaryNotifier {
         val channel = NotificationChannel(
           CHANNEL_ID,
           "Sleep Summary",
-          NotificationManager.IMPORTANCE_DEFAULT
+          NotificationManager.IMPORTANCE_HIGH
         ).apply {
-          description = "Sleep tracking summary notifications"
-          enableVibration(false)
-          setSound(null, null)
+          description = "Sleep tracking wake-up notifications with sound and vibration"
+          enableVibration(true)
+          setSound(
+            android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
+            android.media.AudioAttributes.Builder()
+              .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
+              .build()
+          )
         }
         manager.createNotificationChannel(channel)
       }

@@ -9,6 +9,8 @@ object ScreenSessionRepo {
   private const val TAG = "ScreenSessionRepo"
   private const val RETENTION_DAYS = 8
   private const val GARBAGE_RETENTION_DAYS = 1
+  private const val MAX_RETRIES = 3
+  private const val RETRY_DELAY_MS = 100L
 
   fun openSession(db: SQLiteDatabase, startTimeIso: String): String {
     val id = UUID.randomUUID().toString()
@@ -200,5 +202,49 @@ object ScreenSessionRepo {
       timeZone = TimeZone.getTimeZone("UTC")
     }
     return sdf.format(this) + "Z"
+  }
+
+  /**
+   * Close session with automatic retry on database lock. Handles concurrent access
+   * from the step tracker or other services accessing the same database.
+   */
+  fun closeSessionWithRetry(db: SQLiteDatabase, sessionId: String, endTimeIso: String) {
+    var lastError: Exception? = null
+    for (attempt in 1..MAX_RETRIES) {
+      try {
+        closeSession(db, sessionId, endTimeIso)
+        Log.d(TAG, "Successfully closed session $sessionId on attempt $attempt")
+        return
+      } catch (e: Exception) {
+        lastError = e
+        if (attempt < MAX_RETRIES) {
+          Log.w(TAG, "Failed to close session (attempt $attempt/$MAX_RETRIES), retrying...", e)
+          Thread.sleep(RETRY_DELAY_MS)
+        }
+      }
+    }
+    throw lastError ?: Exception("Failed to close session after $MAX_RETRIES attempts")
+  }
+
+  /**
+   * Prune old screen data with automatic retry on database lock. Ensures data cleanup
+   * completes even under concurrent database access.
+   */
+  fun pruneOldScreenDataWithRetry(db: SQLiteDatabase, windowStart: String, windowEnd: String) {
+    var lastError: Exception? = null
+    for (attempt in 1..MAX_RETRIES) {
+      try {
+        pruneOldScreenData(db, windowStart, windowEnd)
+        Log.d(TAG, "Successfully pruned old screen data on attempt $attempt")
+        return
+      } catch (e: Exception) {
+        lastError = e
+        if (attempt < MAX_RETRIES) {
+          Log.w(TAG, "Failed to prune data (attempt $attempt/$MAX_RETRIES), retrying...", e)
+          Thread.sleep(RETRY_DELAY_MS)
+        }
+      }
+    }
+    throw lastError ?: Exception("Failed to prune data after $MAX_RETRIES attempts")
   }
 }

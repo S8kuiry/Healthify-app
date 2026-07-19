@@ -166,10 +166,15 @@ class ScreenActivityService : Service() {
     try {
       db = openDatabase()
       if (db != null) {
-        // Close any open session
+        // Close any open session with retries to handle database locks
         if (openSessionId != null) {
-          ScreenSessionRepo.closeSession(db, openSessionId!!, getCurrentTimeIso8601())
-          openSessionId = null
+          try {
+            ScreenSessionRepo.closeSessionWithRetry(db, openSessionId!!, getCurrentTimeIso8601())
+            openSessionId = null
+          } catch (e: Exception) {
+            Log.e(TAG, "Failed to close session after retries", e)
+            openSessionId = null
+          }
         }
 
         // Query all sessions in tonight's window
@@ -203,10 +208,14 @@ class ScreenActivityService : Service() {
           wakeTime.time
         )
 
-        // Run pruning
-        val windowStartStr = String.format("%02d:%02d", windowStartMin / 60, windowStartMin % 60)
-        val windowEndStr = String.format("%02d:%02d", windowEndMin / 60, windowEndMin % 60)
-        ScreenSessionRepo.pruneOldScreenData(db, windowStartStr, windowEndStr)
+        // Run pruning with retry logic
+        try {
+          val windowStartStr = String.format("%02d:%02d", windowStartMin / 60, windowStartMin % 60)
+          val windowEndStr = String.format("%02d:%02d", windowEndMin / 60, windowEndMin % 60)
+          ScreenSessionRepo.pruneOldScreenDataWithRetry(db, windowStartStr, windowEndStr)
+        } catch (e: Exception) {
+          Log.w(TAG, "Pruning failed, continuing anyway", e)
+        }
 
         // Post summary notification
         SleepSummaryNotifier.postSleepSummary(this, durationMinutes)
@@ -216,7 +225,13 @@ class ScreenActivityService : Service() {
     } catch (e: Exception) {
       Log.e(TAG, "Error during finalize", e)
     } finally {
-      db?.close()
+      db?.apply {
+        try {
+          close()
+        } catch (e: Exception) {
+          Log.w(TAG, "Error closing database", e)
+        }
+      }
       unregisterNativeListener()
       unregisterScreenReceiver()
       stopSelf()
@@ -231,7 +246,11 @@ class ScreenActivityService : Service() {
         Log.w(TAG, "Database file not found")
         return null
       }
-      SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+      val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+      // Ensure WAL mode is enabled for concurrent access from step tracker and other services
+      db.enableWriteAheadLogging()
+      Log.d(TAG, "Database opened with WAL mode enabled")
+      db
     } catch (e: Exception) {
       Log.e(TAG, "Failed to open database", e)
       null
