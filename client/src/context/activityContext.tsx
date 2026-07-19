@@ -32,17 +32,30 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     setWeekData(rows);
   }, []);
 
-  // Initialize step tracking on mount / when dbReady changes (first load only)
+  // Initialize step tracking once both the DB is ready AND the profile has loaded.
+  // IMPORTANT: profile loads asynchronously, so on a cold start dbReady often becomes
+  // true while profile is still null. This effect must therefore depend on the profile
+  // becoming available (profile?.id) — otherwise it bails on the null-profile pass and,
+  // with profile absent from the deps, never re-runs, so the foreground service never
+  // starts (no notification, no step counting). Keyed on profile?.id so it runs once
+  // per profile, not on every goal/metric edit (those are handled by the effect below).
   useEffect(() => {
-    if (!profile || !dbReady || Platform.OS !== 'android') return;
+    console.log('[StepDiag] effect fired. dbReady=', dbReady, 'hasProfile=', !!profile, 'platform=', Platform.OS);
+    if (!profile || !dbReady || Platform.OS !== 'android') {
+      console.log('[StepDiag] BAILED early (profile/dbReady/platform guard)');
+      return;
+    }
 
     let sub: EventSubscription | undefined;
     let cancelled = false;
 
     (async () => {
+      console.log('[StepDiag] importing step-tracker module...');
       const stepTracker = await import('../../modules/step-tracker/src');
 
       if (cancelled) return;
+
+      console.log('[StepDiag] native available=', stepTracker.isStepTrackerNativeAvailable());
 
       stepTracker.setActivityProfile(
         profile.heightCm,
@@ -54,10 +67,13 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       // Register listener before starting the foreground service so native
       // step events don't hit an empty bridge during service startup.
       sub = stepTracker.addStepUpdateListener((evt: StepUpdateEvent) => {
+        console.log('[StepDiag] step update received:', evt.steps);
         setSteps(evt.steps);
       });
 
+      console.log('[StepDiag] calling initStepTracking()...');
       const ok = await stepTracker.initStepTracking();
+      console.log('[StepDiag] initStepTracking() returned:', ok);
       if (cancelled) return;
 
       setPermissionDenied(!ok);
@@ -91,7 +107,10 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       sub?.remove();
       appSub.remove();
     };
-  }, [dbReady, refreshWeekFromDb]);
+    // Depend on whether a profile exists (not the object) so this re-runs once when
+    // the profile finishes loading after a cold start, but not on every goal/metric
+    // edit. profile has no stable id field, so a boolean is the correct key here.
+  }, [dbReady, !!profile, refreshWeekFromDb]);
 
   // Separate effect: update goals without reinitializing listener
   useEffect(() => {
@@ -106,7 +125,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         profile.calorieGoal ?? 0
       );
     })();
-  }, [profile.stepGoal, profile.calorieGoal, profile.heightCm, profile.weightKg, dbReady]);
+  }, [profile?.stepGoal, profile?.calorieGoal, profile?.heightCm, profile?.weightKg, dbReady]);
 
   const calories = useMemo(() => {
     if (!profile || steps === null) return null;

@@ -19,6 +19,7 @@ class ScreenEventReceiver : BroadcastReceiver() {
   override fun onReceive(context: Context, intent: Intent) {
     val type = when (intent.action) {
       Intent.ACTION_SCREEN_ON -> "SCREEN_ON"
+      
       Intent.ACTION_SCREEN_OFF -> "SCREEN_OFF"
       Intent.ACTION_USER_PRESENT -> "USER_PRESENT"
       else -> return // Ignore anything unexpected
