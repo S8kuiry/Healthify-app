@@ -106,11 +106,12 @@ export default function VolumeSlider({ value, onChange, onCommit }: Props) {
           height: THUMB_SIZE,
           width: THUMB_SIZE,
           borderRadius: THUMB_SIZE / 2,
-          backgroundColor: colors.cardBackground,
+          backgroundColor: 'white',
           borderWidth: 3,
           borderColor: colors.accent,
           // Subtle lift so the thumb reads above the track.
           shadowColor: '#000',
+          
           shadowOpacity: 0.2,
           shadowRadius: 3,
           shadowOffset: { width: 0, height: 1 },

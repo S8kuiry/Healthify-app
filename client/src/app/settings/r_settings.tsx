@@ -32,15 +32,23 @@ export default function SoundSettingsScreen() {
   useEffect(() => {
     let active = true;
     async function load() {
-      const [systemAlarms, savedUri, savedVibrate, savedVolume] = await Promise.all([
-        ReminderAlarmModule.getSystemAlarms(),
-        getSelectedAlarmUri(),
-        getVibrateEnabled(),
-        getAlarmVolume(),
-      ]);
+      const [systemAlarms, savedUri, defaultUri, savedVibrate, savedVolume] =
+        await Promise.all([
+          ReminderAlarmModule.getSystemAlarms(),
+          getSelectedAlarmUri(),
+          ReminderAlarmModule.getDefaultAlarmUri(),
+          getVibrateEnabled(),
+          getAlarmVolume(),
+        ]);
       if (!active) return;
       setSounds(systemAlarms);
-      setSelectedUri(savedUri);
+      // On a fresh install nothing is saved, but the alarm still rings with the
+      // system default tone (see AlarmService.kt). Highlight that default tone —
+      // as long as it's actually one of the listed tones — so the green mark
+      // reflects the tone currently in use, not an empty selection.
+      const fallbackUri =
+        defaultUri && systemAlarms.some((s) => s.uri === defaultUri) ? defaultUri : null;
+      setSelectedUri(savedUri ?? fallbackUri);
       setVibrate(savedVibrate);
       setVolume(savedVolume);
       setLoading(false);

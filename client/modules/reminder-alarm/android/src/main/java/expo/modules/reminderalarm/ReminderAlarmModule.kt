@@ -92,6 +92,23 @@ class ReminderAlarmModule : Module() {
       alarmList
     }
 
+    // The system's default alarm tone URI. On a fresh install the app has no
+    // saved tone, and AlarmService falls back to this exact tone at ring time
+    // (see AlarmService.kt). The settings screen uses this to pre-select /
+    // green-mark the tone that is actually in use before the user picks one.
+    //
+    // We resolve to the *actual* underlying tone URI (not the abstract
+    // "default alarm" content://settings/... alias) so the returned string
+    // matches one of the getSystemAlarms() list entries and highlights it.
+    AsyncFunction("getDefaultAlarmUri") { ->
+      val ctx = applicationContext()
+      val uri =
+        RingtoneManager.getActualDefaultRingtoneUri(ctx, RingtoneManager.TYPE_ALARM)
+          ?: RingtoneManager.getActualDefaultRingtoneUri(ctx, RingtoneManager.TYPE_RINGTONE)
+          ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+      uri?.toString()
+    }
+
 
     // 🔊 1. Play the selected ringtone preview
     AsyncFunction("playAlarmPreview") { uriString: String ->

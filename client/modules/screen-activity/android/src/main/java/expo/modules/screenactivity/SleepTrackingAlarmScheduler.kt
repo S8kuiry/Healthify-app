@@ -41,29 +41,32 @@ object SleepTrackingAlarmScheduler {
       val (windowStartMin, windowEndMin) = settings
 
       val now = Calendar.getInstance()
-      val today = Calendar.getInstance().apply {
-        set(Calendar.HOUR_OF_DAY, 0)
-        set(Calendar.MINUTE, 0)
-        set(Calendar.SECOND, 0)
-        set(Calendar.MILLISECOND, 0)
-      }
 
-      // Compute alarm times for today (or tomorrow if already past)
-      val earlyReminderTime = computeAlarmTime(today, windowStartMin - EARLY_REMINDER_OFFSET_MIN, now)
-      val finalReminderTime = computeAlarmTime(today, windowStartMin - FINAL_REMINDER_OFFSET_MIN, now)
-      val startAlarmTime = computeAlarmTime(today, windowStartMin, now)
+      // --- Single anchor: the START instant of the current-or-next window ---
+      //
+      // All four alarms are derived as FIXED offsets from ONE anchor (the window
+      // start instant), so they always describe the SAME night. This is the fix
+      // for the old per-alarm "if past, add a day" logic: when the receiver
+      // re-armed right after START fired, the independently-computed start had
+      // already rolled to tomorrow and dragged STOP along with it, so a same-day
+      // window (e.g. 17:00-18:00, or your 07:00-08:00) never got finalized that
+      // day. Anchoring everything to one start instant keeps the whole set
+      // internally consistent and honors exactly the HH:mm the user set (AM/PM
+      // is already baked into the 0-1439 minute value).
+      val startAnchor = resolveStartAnchor(windowStartMin, windowEndMin, now)
 
-      // Stop alarm time: if window crosses midnight, stop is the next day
-      val stopAlarmCalendar = Calendar.getInstance().apply { timeInMillis = startAlarmTime.timeInMillis }
-      val crossesMidnight = windowEndMin <= windowStartMin
-      if (crossesMidnight) {
-        stopAlarmCalendar.add(Calendar.DAY_OF_MONTH, 1)
-      }
-      val stopMinutes = windowEndMin + STOP_GRACE_MIN
-      stopAlarmCalendar.set(Calendar.HOUR_OF_DAY, stopMinutes / 60)
-      stopAlarmCalendar.set(Calendar.MINUTE, stopMinutes % 60)
-      stopAlarmCalendar.set(Calendar.SECOND, 0)
-      val stopAlarmTime = stopAlarmCalendar
+      // Window length in minutes. For a window that crosses midnight (end <=
+      // start numerically, e.g. 23:00->07:00) add a full day so STOP lands on
+      // the correct calendar day. Same-day windows (00:00->07:00, 07:00->08:00)
+      // keep the plain difference.
+      val rawLength = windowEndMin - windowStartMin
+      val windowLengthMin = if (rawLength > 0) rawLength else rawLength + 24 * 60
+
+      // Derive the other three instants as offsets from the single start anchor.
+      val earlyReminderTime = offsetFrom(startAnchor, -EARLY_REMINDER_OFFSET_MIN)
+      val finalReminderTime = offsetFrom(startAnchor, -FINAL_REMINDER_OFFSET_MIN)
+      val startAlarmTime = startAnchor
+      val stopAlarmTime = offsetFrom(startAnchor, windowLengthMin + STOP_GRACE_MIN)
 
       // Schedule all four alarms
       scheduleAlarm(context, alarmManager, earlyReminderTime, "ACTION_SLEEP_EARLY_REMINDER", EARLY_REMINDER_REQUEST_CODE)
@@ -71,7 +74,11 @@ object SleepTrackingAlarmScheduler {
       scheduleAlarm(context, alarmManager, startAlarmTime, "ACTION_SLEEP_START", START_REQUEST_CODE)
       scheduleAlarm(context, alarmManager, stopAlarmTime, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE)
 
-      Log.d(TAG, "Scheduled all 4 alarms successfully")
+      Log.d(
+        TAG,
+        "Scheduled all 4 alarms. start=${startAlarmTime.time} stop=${stopAlarmTime.time} " +
+          "(windowLen=${windowLengthMin}min, early=${earlyReminderTime.time}, final=${finalReminderTime.time})"
+      )
     } catch (e: Exception) {
       Log.e(TAG, "Failed to schedule alarms", e)
     }
@@ -132,21 +139,63 @@ object SleepTrackingAlarmScheduler {
     Log.d(TAG, "Cancelled alarm $action")
   }
 
-  private fun computeAlarmTime(baseDate: Calendar, minutes: Int, now: Calendar): Calendar {
-    val result = Calendar.getInstance().apply {
-      timeInMillis = baseDate.timeInMillis
-      set(Calendar.HOUR_OF_DAY, minutes / 60)
-      set(Calendar.MINUTE, minutes % 60)
+  /**
+   * Resolves the START instant for the window occurrence we should be tracking:
+   * the next window whose *end* is still in the future. This is the single
+   * anchor every other alarm is derived from.
+   *
+   * Honors exactly the HH:mm the user set (AM/PM already baked into the 0-1439
+   * minute values) - it never invents a different time, it only picks which
+   * calendar day the literal start time lands on:
+   *
+   *  - Today's start, if that window (start..end) hasn't fully ended yet - so a
+   *    window still in progress, or later today, is tracked today.
+   *  - Otherwise tomorrow's start.
+   *
+   * Examples (all handled by the same logic):
+   *   00:00 -> 07:00  same-day; start today at 00:00 if before 07:00, else tomorrow.
+   *   23:00 -> 07:00  crosses midnight; window length 8h, end is next-day 07:00.
+   *   07:00 -> 08:00  same-day 1h window.
+   */
+  private fun resolveStartAnchor(windowStartMin: Int, windowEndMin: Int, now: Calendar): Calendar {
+    val rawLength = windowEndMin - windowStartMin
+    val windowLengthMin = if (rawLength > 0) rawLength else rawLength + 24 * 60
+
+    // Today's start instant at the literal HH:mm.
+    val startToday = Calendar.getInstance().apply {
+      timeInMillis = now.timeInMillis
+      set(Calendar.HOUR_OF_DAY, windowStartMin / 60)
+      set(Calendar.MINUTE, windowStartMin % 60)
       set(Calendar.SECOND, 0)
       set(Calendar.MILLISECOND, 0)
     }
 
-    // If already past this time, use tomorrow instead
-    if (result.before(now)) {
-      result.add(Calendar.DAY_OF_MONTH, 1)
+    // The end of the window that starts at startToday.
+    val endToday = Calendar.getInstance().apply {
+      timeInMillis = startToday.timeInMillis
+      add(Calendar.MINUTE, windowLengthMin)
     }
 
-    return result
+    // If today's window has already fully ended, track tomorrow's instead.
+    // Using the END (not the start) means an in-progress window is still tracked
+    // today, and re-arming right after START fires keeps the SAME night's start
+    // (its end is still in the future) instead of jumping a day.
+    return if (endToday.after(now)) {
+      startToday
+    } else {
+      Calendar.getInstance().apply {
+        timeInMillis = startToday.timeInMillis
+        add(Calendar.DAY_OF_MONTH, 1)
+      }
+    }
+  }
+
+  /** A fixed minute offset from the anchor instant (negative = before). */
+  private fun offsetFrom(anchor: Calendar, offsetMinutes: Int): Calendar {
+    return Calendar.getInstance().apply {
+      timeInMillis = anchor.timeInMillis
+      add(Calendar.MINUTE, offsetMinutes)
+    }
   }
 
   private fun readSleepSettings(context: Context): Pair<Int, Int>? {

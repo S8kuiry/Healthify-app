@@ -6,7 +6,11 @@ import { getSleepSettings, updateSleepSettings } from '@/domain/screenActivity/s
 import ClockIntervalPicker, { HALF_DAY_MINUTES } from './Clockintervalpicker';
 
 const MINUTES_IN_DAY = 24 * 60;
-const DEBOUNCE_MS = 1000;
+// Short buffer only to coalesce rapid drags into one write - NOT something the
+// user ever waits on. The on-screen value updates instantly (local state), and
+// any pending write is flushed immediately if the user leaves the screen (see
+// the unmount cleanup), so leaving early can never lose an edit.
+const DEBOUNCE_MS = 400;
 
 function formatTime12h(minutesOfDay: number): string {
   // No AM/PM suffix here - the toggle button next to it makes that explicit
@@ -103,6 +107,48 @@ export default function SleepWindowPicker() {
   const [error, setError] = useState<string | null>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Latest values, kept in refs so the debounced save always persists the
+  // current on-screen pair rather than whatever either handler captured in its
+  // render closure. Without this, dragging one handle would save the OTHER
+  // handle's stale value, silently corrupting the stored window.
+  const bedTimeRef = useRef<number | null>(null);
+  const wakeTimeRef = useRef<number | null>(null);
+  bedTimeRef.current = bedTime;
+  wakeTimeRef.current = wakeTime;
+
+  // Guards the debounced write so it only ever fires from a real user edit.
+  // The initial DB load calls setBedTime/setWakeTime too; without this flag a
+  // load could schedule a save and write the window straight back (a no-op at
+  // best, a race that clobbers a concurrent edit at worst). It flips to true
+  // only inside the change handlers below.
+  const hasUserEditedRef = useRef(false);
+
+  // True while an edit has been made but not yet written to the DB. Lets the
+  // unmount cleanup know it must flush the pending write instead of dropping it.
+  const pendingSaveRef = useRef(false);
+
+  // Persists the current on-screen pair immediately. Reads the LATEST values
+  // from refs (not a render closure), so the write is always internally
+  // consistent no matter which handle moved last. Clears any queued timer and
+  // the pending flag so a subsequent flush can't double-write the same values.
+  const flushSave = () => {
+    if (saveTimeout.current) {
+      clearTimeout(saveTimeout.current);
+      saveTimeout.current = null;
+    }
+    if (!pendingSaveRef.current) return;
+    pendingSaveRef.current = false;
+
+    const bed = bedTimeRef.current;
+    const wake = wakeTimeRef.current;
+    if (bed === null || wake === null) return;
+
+    updateSleepSettings({
+      windowStart: minutesToTime(bed),
+      windowEnd: minutesToTime(wake),
+    }).catch((err) => console.error('Failed to save sleep settings:', err));
+  };
+
   useEffect(() => {
     let cancelled = false;
 
@@ -124,29 +170,37 @@ export default function SleepWindowPicker() {
 
     return () => {
       cancelled = true;
+      // Flush (don't discard) any edit the user made right before leaving. The
+      // on-screen value already updated instantly; this guarantees it actually
+      // reaches the DB even if they navigate away in well under a second. The
+      // update runs against the module-level DB singleton, so it completes even
+      // after this component has unmounted.
+      flushSave();
     };
   }, []);
 
-  const debounceSave = (bed: number | null, wake: number | null) => {
+  // Marks an edit pending and schedules a short-buffered write. Coalesces rapid
+  // drags into a single DB write; the buffer is never something the user waits
+  // on (UI is already updated, and unmount flushes anything still pending).
+  const scheduleSave = () => {
+    if (!hasUserEditedRef.current) return;
+    pendingSaveRef.current = true;
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
-    if (bed !== null && wake !== null) {
-      saveTimeout.current = setTimeout(() => {
-        updateSleepSettings({
-          windowStart: minutesToTime(bed),
-          windowEnd: minutesToTime(wake),
-        }).catch((err) => console.error('Failed to save sleep settings:', err));
-      }, DEBOUNCE_MS);
-    }
+    saveTimeout.current = setTimeout(flushSave, DEBOUNCE_MS);
   };
 
   const handleBedChange = (value: number) => {
+    hasUserEditedRef.current = true;
+    bedTimeRef.current = value;
     setBedTime(value);
-    debounceSave(value, wakeTime);
+    scheduleSave();
   };
 
   const handleWakeChange = (value: number) => {
+    hasUserEditedRef.current = true;
+    wakeTimeRef.current = value;
     setWakeTime(value);
-    debounceSave(bedTime, value);
+    scheduleSave();
   };
 
   if (isLoading) {

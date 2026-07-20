@@ -60,7 +60,11 @@ object SleepGapCalculator {
 
   private fun parseIso8601(isoStr: String): java.util.Date {
     return try {
-      val trimmed = isoStr.replace("Z", "").substringBefore("+").substringBefore("-").take(19)
+      // Timestamps are written as 'yyyy-MM-ddTHH:mm:ssZ' in UTC. Take the first
+      // 19 chars (the 'yyyy-MM-ddTHH:mm:ss' core) and parse as UTC. Do NOT strip
+      // on '-': the date itself contains '-' separators, so substringBefore("-")
+      // would collapse the whole timestamp down to just the year.
+      val trimmed = isoStr.take(19)
       java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss").apply {
         timeZone = java.util.TimeZone.getTimeZone("UTC")
       }.parse(trimmed)

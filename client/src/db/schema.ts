@@ -159,4 +159,24 @@ export async function runMigrations() {
   await db.execAsync(
     `INSERT OR IGNORE INTO reminder_sound (id, sound_uri, vibrate) VALUES (1, NULL, 1);`
   );
+
+  // One-time normalization of the sleep window default.
+  //
+  // The seed INSERT above uses INSERT OR IGNORE, so installs created BEFORE the
+  // '23:00'/'07:00' default was in place keep whatever their old seed wrote
+  // (e.g. an AM start). This corrects that stored row to the intended default
+  // exactly ONCE, gated by an app_meta flag so it can never fight a window the
+  // user later sets themselves. After this has run once, updates from the
+  // picker are the only thing that ever touches sleep_settings again.
+  const flag = await db.getFirstAsync<{ value: string }>(
+    `SELECT value FROM app_meta WHERE key = 'sleep_window_default_normalized';`
+  );
+  if (!flag) {
+    await db.runAsync(
+      `UPDATE sleep_settings SET window_start = '23:00', window_end = '07:00' WHERE id = 1;`
+    );
+    await db.runAsync(
+      `INSERT OR REPLACE INTO app_meta (key, value) VALUES ('sleep_window_default_normalized', '1');`
+    );
+  }
 }

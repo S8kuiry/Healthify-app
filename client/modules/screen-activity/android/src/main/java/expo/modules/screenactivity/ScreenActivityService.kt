@@ -177,17 +177,27 @@ class ScreenActivityService : Service() {
           }
         }
 
-        // Query all sessions in tonight's window
+        // Query all sessions in the window that just ended.
         val settings = readSleepSettings(db) ?: return stopSelf()
         val (windowStartMin, windowEndMin) = settings
 
-        val today = Calendar.getInstance()
-        val dateStr = today.toLocalDateString()
-        val (bedTime, wakeTime) = resolveWindowForDate(dateStr, windowStartMin, windowEndMin)
+        // Anchor the window to the night that just ended at "now". wakeTime is
+        // the most recent occurrence of windowEnd at or before now; bedTime is
+        // one window-length earlier. This correctly places bedTime on the
+        // PREVIOUS calendar day for a window that crosses midnight (e.g.
+        // 23:00 -> 07:00), which the old "today at HH:mm" anchoring got wrong -
+        // it pointed bedTime at tonight instead of last night, so the query
+        // matched none of the sessions actually recorded overnight.
+        val (bedTime, wakeTime) = resolveEndedWindow(windowStartMin, windowEndMin)
 
+        // Filter purely by the timestamp range (start before wake, still open
+        // or ending after bed). The old query also constrained `date = today`,
+        // but `date` is the LOCAL date of a session's start_time, so pre-midnight
+        // sessions carry yesterday's date and were being excluded entirely. The
+        // range test alone is correct and matches the JS getSleepForNight query.
         val cursor = db.rawQuery(
-          "SELECT start_time, end_time FROM screen_sessions WHERE date = ? AND start_time < ? AND (end_time IS NULL OR end_time > ?);",
-          arrayOf(dateStr, dateToIso8601(wakeTime), dateToIso8601(bedTime))
+          "SELECT start_time, end_time FROM screen_sessions WHERE start_time < ? AND (end_time IS NULL OR end_time > ?) ORDER BY start_time ASC;",
+          arrayOf(dateToIso8601(wakeTime), dateToIso8601(bedTime))
         )
 
         val sessions = mutableListOf<ScreenSessionData>()
@@ -279,6 +289,41 @@ class ScreenActivityService : Service() {
     val h = parts.getOrNull(0)?.toIntOrNull() ?: 0
     val m = parts.getOrNull(1)?.toIntOrNull() ?: 0
     return h * 60 + m
+  }
+
+  /**
+   * Resolves the [bedTime, wakeTime] instants for the sleep window that just
+   * ended at "now" - the ACTUAL night being finalized. wakeTime is the most
+   * recent occurrence of windowEnd at or before now; bedTime is one full
+   * window length earlier. This keeps bedTime on the correct calendar day even
+   * when the window crosses midnight, so the session query below actually spans
+   * the overnight sessions instead of an empty future range.
+   */
+  private fun resolveEndedWindow(windowStartMin: Int, windowEndMin: Int): Pair<Date, Date> {
+    // Window length in minutes, handling the midnight-crossing case where
+    // windowEnd is numerically <= windowStart (e.g. 23:00 -> 07:00 = 480 min).
+    val rawLength = windowEndMin - windowStartMin
+    val windowLengthMin = if (rawLength > 0) rawLength else rawLength + 24 * 60
+
+    // Most recent wake instant at or before now.
+    val wakeCal = Calendar.getInstance().apply {
+      set(Calendar.HOUR_OF_DAY, windowEndMin / 60)
+      set(Calendar.MINUTE, windowEndMin % 60)
+      set(Calendar.SECOND, 0)
+      set(Calendar.MILLISECOND, 0)
+      // If that puts wake in the future (window hasn't ended today yet), step
+      // back a day so we finalize the window that genuinely just closed.
+      if (after(Calendar.getInstance())) {
+        add(Calendar.DAY_OF_MONTH, -1)
+      }
+    }
+
+    val bedCal = Calendar.getInstance().apply {
+      timeInMillis = wakeCal.timeInMillis
+      add(Calendar.MINUTE, -windowLengthMin)
+    }
+
+    return Pair(bedCal.time, wakeCal.time)
   }
 
   private fun resolveWindowForDate(

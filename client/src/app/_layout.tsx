@@ -23,19 +23,26 @@ Notifications.setNotificationHandler({
   }),
 });
 
-/**
- * Initialize screen activity tracking (sleep detection).
- * Must run once on startup before profile is loaded.
- */
-initScreenActivityTracking().catch((err) => {
-  console.error('[ScreenActivityListener] Initialization failed:', err);
-});
-
-
 function RootNavigation() {
-  const { profile, isLoading } = useProfile();
+  const { profile, isLoading, dbReady } = useProfile();
   const segments = useSegments();
   const router = useRouter();
+
+  // Initialize screen-activity / sleep tracking (schedules the sleep-window
+  // alarms) only AFTER migrations have created and seeded the database.
+  // Previously this ran at module-import time, before ProfileProvider had run
+  // runMigrations(), so on a fresh install scheduleSleepTracking() read a
+  // missing sleep_settings table, returned early, and scheduled no alarms at
+  // all - which is why the reminders/summary never fired. Gating on dbReady
+  // (and running once) fixes that ordering.
+  const trackingInitStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (!dbReady || trackingInitStarted.current) return;
+    trackingInitStarted.current = true;
+    initScreenActivityTracking().catch((err) => {
+      console.error('[ScreenActivityListener] Initialization failed:', err);
+    });
+  }, [dbReady]);
 
   React.useEffect(() => {
     if (isLoading) return;

@@ -8,6 +8,7 @@ interface ReminderAlarmModuleType {
   scheduleAlarm(id: string, label: string, timestampMs: number, repeat: boolean): Promise<void>;
   cancelAlarm(id: string): Promise<void>;
   getSystemAlarms(): Promise<{ title: string; uri: string }[]>;
+  getDefaultAlarmUri(): Promise<string | null>;
   playAlarmPreview(uri: string): Promise<void>;
   stopAlarmPreview(): Promise<void>;
 }
