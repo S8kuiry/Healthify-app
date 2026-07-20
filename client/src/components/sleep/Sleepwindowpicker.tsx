@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppColors } from '@/hooks/use-app-colors';
+import { useProfile } from '@/context/profileContext';
 import { getSleepSettings, updateSleepSettings } from '@/domain/screenActivity/sleepSettingsRepo';
 import ClockIntervalPicker, { HALF_DAY_MINUTES } from './Clockintervalpicker';
 
@@ -101,6 +102,13 @@ function PeriodToggle({ minutesOfDay, onChange, accent, track, cardBackground }:
 
 export default function SleepWindowPicker() {
   const colors = useAppColors();
+  // dbReady flips true only AFTER runMigrations() has created & seeded the
+  // sleep_settings table. Reading before that races the migration - harmless in
+  // the dev build (Metro loads JS slowly, so migrations finish first) but in a
+  // release APK the UI mounts almost instantly and the SELECT hits a table that
+  // doesn't exist yet, throwing -> "Failed to load sleep settings". Gating the
+  // load on dbReady is what makes the release build behave like the emulator.
+  const { dbReady } = useProfile();
   const [bedTime, setBedTime] = useState<number | null>(null);
   const [wakeTime, setWakeTime] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -150,6 +158,10 @@ export default function SleepWindowPicker() {
   };
 
   useEffect(() => {
+    // Wait until migrations have created/seeded sleep_settings. Without this the
+    // read can beat the migration in a release APK and throw (see dbReady note above).
+    if (!dbReady) return;
+
     let cancelled = false;
 
     getSleepSettings()
@@ -177,7 +189,7 @@ export default function SleepWindowPicker() {
       // after this component has unmounted.
       flushSave();
     };
-  }, []);
+  }, [dbReady]);
 
   // Marks an edit pending and schedules a short-buffered write. Coalesces rapid
   // drags into a single DB write; the buffer is never something the user waits

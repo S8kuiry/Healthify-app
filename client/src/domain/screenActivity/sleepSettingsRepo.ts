@@ -61,6 +61,19 @@ export async function updateSleepSettings(
     [windowStart, windowEnd]
   );
 
+  // CRITICAL: force a WAL checkpoint so the UPDATE above is flushed from the -wal
+  // file into the main healthapp.db BEFORE we reschedule. scheduleSleepTracking()
+  // runs native Kotlin that opens a SEPARATE SQLite connection to read the window.
+  // Without this checkpoint, that connection can read the STALE pre-update value
+  // (the new frame is still only in this JS connection's WAL), so the alarms get
+  // armed for the OLD window - the exact "I changed the time but the reminder
+  // didn't move" bug. TRUNCATE fully empties the WAL so any reader sees the value.
+  try {
+    await db.execAsync('PRAGMA wal_checkpoint(TRUNCATE);');
+  } catch (err) {
+    console.warn('[SleepSettingsRepo] wal_checkpoint failed (continuing):', err);
+  }
+
   // Re-schedule alarms for the new window
   await scheduleSleepTracking().catch((err) =>
     console.warn('[SleepSettingsRepo] Failed to reschedule sleep tracking:', err)

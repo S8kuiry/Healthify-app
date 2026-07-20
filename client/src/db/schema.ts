@@ -1,8 +1,28 @@
-import { getDb } from './client';
+import { getDb, isCorruptionError, recoverCorruptDatabase } from './client';
 
 // Runs once on app startup. CREATE TABLE IF NOT EXISTS is safe to run
 // every launch — it's a no-op once the tables already exist.
+//
+// Corruption self-heal: getDb() probes for a malformed file on open, but if the
+// corruption only surfaces mid-migration we catch it here, delete + recreate the
+// file, and run the migration once more against the clean DB. This guarantees the
+// app never ends up permanently stuck on a corrupt database (which otherwise makes
+// every read/write fail forever - see the sleep-settings save failures).
 export async function runMigrations() {
+  try {
+    await runMigrationsOnce();
+  } catch (err) {
+    if (isCorruptionError(err)) {
+      console.warn('[db] Corruption during migration; recreating DB and retrying once.');
+      await recoverCorruptDatabase();
+      await runMigrationsOnce();
+    } else {
+      throw err;
+    }
+  }
+}
+
+async function runMigrationsOnce() {
   const db = await getDb();
 
   await db.execAsync(`

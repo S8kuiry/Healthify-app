@@ -23,8 +23,18 @@
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
-    <!-- Required to schedule exact alarms (API 31+) for sleep window start/stop. -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- Exact alarms for sleep window start/stop + reminders.
+         USE_EXACT_ALARM (API 33+) is AUTO-GRANTED and non-revocable - the right choice for a
+         reminder/alarm-clock style feature. This avoids the fresh-install trap of
+         SCHEDULE_EXACT_ALARM, which on Android 13+ is NOT granted by default and has no
+         in-app grant dialog, so after a reinstall canScheduleExactAlarms() returned false
+         and the sleep module silently scheduled ZERO alarms (no reminder ever fired).
+         SCHEDULE_EXACT_ALARM is kept as the fallback for API 31-32 where USE_EXACT_ALARM
+         doesn't exist. -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission
+        android:name="android.permission.SCHEDULE_EXACT_ALARM"
+        android:maxSdkVersion="32" />
 
     <!-- Required to re-arm alarms after device reboot. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

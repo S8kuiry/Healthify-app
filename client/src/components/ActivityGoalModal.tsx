@@ -144,7 +144,7 @@ export default function ActivityGoalModal({
                 keyboardType="number-pad"
                 placeholder="e.g. 10000"
                 placeholderTextColor="#8a8a8a"
-                className="bg-lightBackground rounded-2xl px-4 py-3 text-textPrimary text-base font-bold placeholder:text-textSecondary"
+                className="bg-lightBackground rounded-2xl px-4 py-3 text-textPrimary text-base font-bold placeholder:text-white"
               />
             </View>
           )}
@@ -161,7 +161,7 @@ export default function ActivityGoalModal({
                 keyboardType="number-pad"
                 placeholder="e.g. 300"
                 placeholderTextColor={colors.textSecondary}
-                className="bg-lightBackground rounded-2xl px-4 py-3 text-textPrimary text-base font-bold placeholder:text-textSecondary"
+                className="bg-lightBackground rounded-2xl px-4 py-3 text-textPrimary text-base font-bold placeholder:text-white"
               />
             </View>
           )}

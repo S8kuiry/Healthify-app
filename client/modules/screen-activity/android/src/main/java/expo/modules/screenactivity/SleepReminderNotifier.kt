@@ -17,7 +17,15 @@ import android.net.Uri
 
 object SleepReminderNotifier {
   private const val TAG = "SleepReminderNotifier"
-  private const val CHANNEL_ID = "sleep_reminder"
+  // NOTE: versioned channel id. The original "sleep_reminder" channel shipped (on some
+  // installs) at LOW importance and got its importance field user-locked, so it fired
+  // SILENTLY and could never be raised back to HIGH in place - Android forbids an app from
+  // increasing an existing channel's importance, and a user-locked importance can't be
+  // touched at all. Bumping the id forces the OS to treat this as a brand-new channel and
+  // honor our IMPORTANCE_HIGH + sound settings. The stale old channel is deleted in
+  // ensureNotificationChannel so it doesn't linger in the app's notification settings.
+  private const val CHANNEL_ID = "sleep_reminder_v2"
+  private const val LEGACY_CHANNEL_ID = "sleep_reminder"
   private const val EARLY_REMINDER_ID = 9102
   private const val FINAL_REMINDER_ID = 9103
 
@@ -171,23 +179,33 @@ object SleepReminderNotifier {
   private fun ensureNotificationChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-      val existing = manager.getNotificationChannel(CHANNEL_ID)
-      if (existing == null) {
+
+      // Remove the legacy channel that could be stuck at LOW importance (silent). Deleting
+      // it cleans up the app's notification settings; the reminders now use CHANNEL_ID.
+      if (manager.getNotificationChannel(LEGACY_CHANNEL_ID) != null) {
+        manager.deleteNotificationChannel(LEGACY_CHANNEL_ID)
+        Log.d(TAG, "Deleted legacy silent channel $LEGACY_CHANNEL_ID")
+      }
+
+      if (manager.getNotificationChannel(CHANNEL_ID) == null) {
         val channel = NotificationChannel(
           CHANNEL_ID,
           "Sleep Reminders",
-          NotificationManager.IMPORTANCE_HIGH
+          NotificationManager.IMPORTANCE_HIGH  // HIGH = makes sound + heads-up
         ).apply {
           description = "Reminders for your sleep schedule with sound and vibration"
           enableVibration(true)
+          vibrationPattern = longArrayOf(0, 200, 100, 200)
           setSound(
             android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION),
             android.media.AudioAttributes.Builder()
+              .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
               .setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION)
               .build()
           )
         }
         manager.createNotificationChannel(channel)
+        Log.d(TAG, "Created channel $CHANNEL_ID at IMPORTANCE_HIGH with sound")
       }
     }
   }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppColors } from '@/hooks/use-app-colors';
+import { useProfile } from '@/context/profileContext';
 import { getWeeklySleep, type NightlySleep } from '@/domain/screenActivity/sleepCalculator';
 
 function dayLabel(dateStr: string): string {
@@ -11,10 +12,15 @@ function dayLabel(dateStr: string): string {
 
 export default function SleepWeeklyGraph() {
   const colors = useAppColors();
+  // Gate on dbReady so the release APK doesn't read before migrations run. See
+  // the fuller note in Sleepwindowpicker.
+  const { dbReady } = useProfile();
   const [weeklyData, setWeeklyData] = useState<NightlySleep[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    if (!dbReady) return;
+
     let cancelled = false;
     getWeeklySleep()
       .then((result) => {
@@ -27,7 +33,7 @@ export default function SleepWeeklyGraph() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dbReady]);
 
   if (isLoading) {
     return (

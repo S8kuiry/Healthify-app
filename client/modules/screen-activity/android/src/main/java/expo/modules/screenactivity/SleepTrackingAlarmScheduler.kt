@@ -68,15 +68,25 @@ object SleepTrackingAlarmScheduler {
       val startAlarmTime = startAnchor
       val stopAlarmTime = offsetFrom(startAnchor, windowLengthMin + STOP_GRACE_MIN)
 
-      // Schedule all four alarms
-      scheduleAlarm(context, alarmManager, earlyReminderTime, "ACTION_SLEEP_EARLY_REMINDER", EARLY_REMINDER_REQUEST_CODE)
-      scheduleAlarm(context, alarmManager, finalReminderTime, "ACTION_SLEEP_FINAL_REMINDER", FINAL_REMINDER_REQUEST_CODE)
-      scheduleAlarm(context, alarmManager, startAlarmTime, "ACTION_SLEEP_START", START_REQUEST_CODE)
-      scheduleAlarm(context, alarmManager, stopAlarmTime, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE)
+      // Schedule each alarm, but ONLY if its trigger time is still in the future.
+      //
+      // This receiver re-arms all four alarms after EVERY alarm fires (see
+      // SleepAlarmReceiver). When e.g. the early reminder fires at start-60m, the
+      // anchor for the CURRENT (in-progress) window is still today, so earlyReminderTime
+      // recomputes to start-60m == roughly "now, a few ms in the past". Handing a past
+      // trigger time to setExactAndAllowWhileIdle makes Android fire it IMMEDIATELY,
+      // which re-posts the notification and re-arms it in the past again -> an infinite
+      // "alarm-like" repeat. Skipping past-due instants breaks that loop: the reminders
+      // that already fired for the current window are simply not re-armed, and only the
+      // still-future alarms (typically STOP, then the next night's set) stay scheduled.
+      scheduleAlarmIfFuture(context, alarmManager, earlyReminderTime, now, "ACTION_SLEEP_EARLY_REMINDER", EARLY_REMINDER_REQUEST_CODE)
+      scheduleAlarmIfFuture(context, alarmManager, finalReminderTime, now, "ACTION_SLEEP_FINAL_REMINDER", FINAL_REMINDER_REQUEST_CODE)
+      scheduleAlarmIfFuture(context, alarmManager, startAlarmTime, now, "ACTION_SLEEP_START", START_REQUEST_CODE)
+      scheduleAlarmIfFuture(context, alarmManager, stopAlarmTime, now, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE)
 
       Log.d(
         TAG,
-        "Scheduled all 4 alarms. start=${startAlarmTime.time} stop=${stopAlarmTime.time} " +
+        "Scheduled sleep alarms. start=${startAlarmTime.time} stop=${stopAlarmTime.time} " +
           "(windowLen=${windowLengthMin}min, early=${earlyReminderTime.time}, final=${finalReminderTime.time})"
       )
     } catch (e: Exception) {
@@ -100,6 +110,29 @@ object SleepTrackingAlarmScheduler {
     }
   }
 
+  /**
+   * Schedules an exact alarm only when [triggerTime] is still in the future. A past (or
+   * now) trigger time would be fired immediately by AlarmManager, which - because the
+   * receiver re-arms on every fire - produces a self-perpetuating "alarm" loop. Cancels any
+   * previously-armed instance of this alarm when its time has passed so a stale pending
+   * intent can't linger.
+   */
+  private fun scheduleAlarmIfFuture(
+    context: Context,
+    alarmManager: AlarmManager,
+    triggerTime: Calendar,
+    now: Calendar,
+    action: String,
+    requestCode: Int
+  ) {
+    if (triggerTime.after(now)) {
+      scheduleAlarm(context, alarmManager, triggerTime, action, requestCode)
+    } else {
+      cancelAlarm(context, alarmManager, action, requestCode)
+      Log.d(TAG, "Skipped past-due alarm $action (would have fired at ${triggerTime.time})")
+    }
+  }
+
   private fun scheduleAlarm(
     context: Context,
     alarmManager: AlarmManager,
@@ -113,9 +146,30 @@ object SleepTrackingAlarmScheduler {
 
     val pendingIntent = PendingIntent.getBroadcast(context, requestCode, intent, FLAGS)
 
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerTime.timeInMillis, pendingIntent)
+    // Use setAlarmClock (the highest-priority alarm type) instead of
+    // setExactAndAllowWhileIdle. setAlarmClock is treated by the OS like a real
+    // user wake-up alarm: it is the most resistant to Doze AND - critically - to
+    // the aggressive background-app / alarm killing on OEM skins (MIUI/Xiaomi,
+    // Samsung, Oppo, OnePlus, Vivo, etc.), which routinely drop ordinary exact
+    // alarms once the app is backgrounded or swiped away. It also surfaces the
+    // status-bar alarm icon. This is the standard fix for "the reminder never
+    // fired on my real phone" while working fine on a stock-Android emulator.
+    //
+    // NOTE: even setAlarmClock cannot fully override a device where the user (or
+    // the OEM by default) has disabled Autostart / put the app under battery
+    // restrictions - those still require the user to allow autostart and set the
+    // app to unrestricted battery. This just gives us the best chance the OS API
+    // allows.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      // The "show" intent opens the app when the user taps the status-bar alarm chip.
+      val showIntent = Intent(context, SleepAlarmReceiver::class.java).apply {
+        this.action = action
+      }
+      val showPending = PendingIntent.getBroadcast(context, requestCode, showIntent, FLAGS)
+      val info = AlarmManager.AlarmClockInfo(triggerTime.timeInMillis, showPending)
+      alarmManager.setAlarmClock(info, pendingIntent)
     } else {
+      @Suppress("DEPRECATION")
       alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerTime.timeInMillis, pendingIntent)
     }
 
@@ -204,7 +258,18 @@ object SleepTrackingAlarmScheduler {
       val dbFile = File(context.filesDir, "SQLite/healthapp.db")
       if (!dbFile.exists()) return null
 
-      db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+      // IMPORTANT: open read-WRITE with WAL enabled, NOT plain OPEN_READONLY.
+      //
+      // The JS side (expo-sqlite) runs the DB in WAL mode and its UPDATE to the
+      // sleep window lands in the -wal file first (not yet checkpointed into the
+      // main .db). A separate connection opened with plain OPEN_READONLY does not
+      // attach the -wal, so it reads the STALE pre-update value from the main db
+      // file - which is exactly why a freshly-saved window (e.g. 03:40) was
+      // ignored and the scheduler kept re-arming the old 23:00 default.
+      // Opening read-write + enableWriteAheadLogging() makes this connection a
+      // proper WAL reader that sees the JS connection's committed frames.
+      db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
+      db.enableWriteAheadLogging()
       db.rawQuery("SELECT window_start, window_end FROM sleep_settings WHERE id = 1;", null).use { c ->
         if (c.moveToFirst() && !c.isNull(0) && !c.isNull(1)) {
           val windowStart = c.getString(0)  // 'HH:mm'

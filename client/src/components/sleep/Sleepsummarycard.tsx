@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { View, Text } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useAppColors } from '@/hooks/use-app-colors';
+import { useProfile } from '@/context/profileContext';
 import { getSleepForNight } from '@/domain/screenActivity/sleepCalculator';
 
 function formatDuration(minutes: number): string {
@@ -27,11 +28,17 @@ function yesterdayLabel(): string {
 
 export default function SleepSummaryCard() {
   const colors = useAppColors();
+  // Gate the DB read on dbReady so the release APK doesn't query screen_sessions
+  // before runMigrations() has created it (which throws -> "Failed to load sleep
+  // data"). See the fuller note in Sleepwindowpicker.
+  const { dbReady } = useProfile();
   const [isLoading, setIsLoading] = useState(true);
   const [lastNightMinutes, setLastNightMinutes] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!dbReady) return;
+
     let cancelled = false;
     getSleepForNight(yesterdayDate())
       .then((result) => {
@@ -50,7 +57,7 @@ export default function SleepSummaryCard() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [dbReady]);
 
   if (isLoading) {
     return (

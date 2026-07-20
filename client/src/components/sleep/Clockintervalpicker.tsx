@@ -20,11 +20,12 @@ function angleForMinutes(minutesOfDay: number): number {
 }
 
 /** Converts a raw angle (radians, 0 = top/12, clockwise-positive) to the
- *  nearest 5-minute mark within a single 12-hour lap (0-719). */
+ *  nearest 1-minute mark within a single 12-hour lap (0-719). Rounding to 1
+ *  (not 5) lets the user pick any minute, e.g. 3:42 / 3:43. */
 function minutesWithinHalfDayForAngle(angleRad: number): number {
   const normalized = ((angleRad % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
   const raw = (normalized / (2 * Math.PI)) * HALF_DAY_MINUTES;
-  return (Math.round(raw / 5) * 5) % HALF_DAY_MINUTES;
+  return Math.round(raw) % HALF_DAY_MINUTES;
 }
 
 function pointOnCircle(angleRad: number, radius: number) {

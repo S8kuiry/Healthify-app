@@ -375,7 +375,7 @@ class ScreenActivityService : Service() {
 
     return builder
       .setContentTitle("HealthApp")
-      .setContentText("Tracking screen activity")
+      .setContentText("Your screen activity is being tracked for sleep analysis.")
       .setSmallIcon(applicationInfo.icon)
       .setOngoing(true)
       .build()
