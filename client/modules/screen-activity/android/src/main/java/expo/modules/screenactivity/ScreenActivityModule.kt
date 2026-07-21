@@ -69,6 +69,20 @@ class ScreenActivityModule : Module() {
       SleepTrackingAlarmScheduler.cancelAll(applicationContext())
     }
 
+    // --- Test helper ---
+    // Runs a compressed sleep window starting [startInMinutes] from now and
+    // lasting [lengthMinutes], so the full START -> track -> STOP -> summary
+    // notification -> card cycle can be verified in minutes instead of waiting
+    // for real bedtime. Uses the SAME code path as a real window (it just moves
+    // the instants), so what you observe is what production does.
+    AsyncFunction("debugRunSleepWindow") { startInMinutes: Int, lengthMinutes: Int ->
+      SleepTrackingAlarmScheduler.scheduleDebugWindow(
+        applicationContext(),
+        startInMinutes,
+        lengthMinutes
+      )
+    }
+
     // --- Usage-access permission helpers (for the later per-app breakdown feature) ---
     // These are unrelated to the screen on/off receiver above (which needs no special
     // permission) - UsageStatsManager access requires the user to manually grant it via a

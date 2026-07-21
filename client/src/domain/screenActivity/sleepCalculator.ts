@@ -1,143 +1,105 @@
 import { getDb } from '@/db/client';
-import { getSleepSettings } from './sleepSettingsRepo';
 
 export interface NightlySleep {
-  /** 'YYYY-MM-DD' - the night this result is for */
+  /** 'YYYY-MM-DD' - the local date the sleep window STARTED on */
   nightDate: string;
-  /** null means "no data yet" - either the window hasn't finished, or
-   *  nothing has been tracked for that night at all */
+  /** null when tracking didn't cover the window, so no duration can be claimed */
   durationMinutes: number | null;
 }
 
-/**
- * Builds the actual bedTime/wakeTime instants for a given night, based on
- * the current sleep_settings window. Handles the normal case where the
- * window crosses midnight (e.g. 23:00 -> 07:00 next day) as well as a same-
- * day window (e.g. if someone sets an unusual daytime nap window).
- */
-function resolveWindowForNight(
-  nightDate: string,
-  windowStart: string,
-  windowEnd: string
-): { bedTime: Date; wakeTime: Date } {
-  const bedTime = new Date(`${nightDate}T${windowStart}:00`);
-
-  const startMinutes = toMinutes(windowStart);
-  const endMinutes = toMinutes(windowEnd);
-  const crossesMidnight = endMinutes <= startMinutes;
-
-  const wakeTime = new Date(`${nightDate}T${windowEnd}:00`);
-  if (crossesMidnight) {
-    wakeTime.setDate(wakeTime.getDate() + 1);
-  }
-
-  return { bedTime, wakeTime };
-}
-
-function toMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
+/** The finished result of one sleep-window occurrence, as recorded natively. */
+export interface LastSleep {
+  /** 'YYYY-MM-DD' - local date the window STARTED on */
+  nightDate: string;
+  bedTime: Date;
+  wakeTime: Date;
+  /** null when the occurrence is 'incomplete' - tracking didn't cover the window */
+  durationMinutes: number | null;
+  status: 'finalized' | 'incomplete';
 }
 
 /**
- * Returns sleep duration for the given night by finding the single largest
- * continuous screen-off gap inside [bedTime, wakeTime]. This is the whole
- * algorithm - no interruption counting, no distraction minutes, no stored
- * result, per the simplified plan.
+ * Returns the most recently completed sleep-window occurrence, or null when
+ * none has completed yet.
  *
- * Returns null if no screen session data exists for the night, to distinguish
- * from "no data yet" (window still in progress) vs "no tracking data" (window
- * finished but no sessions recorded).
+ * Reads the `sleep_sessions` row the native side wrote when the window closed,
+ * rather than re-deriving "which night was that" from the clock. That is what
+ * makes this correct for BOTH window shapes without special-casing either:
+ *
+ *   10:10 -> 11:33  same-day window
+ *   23:00 -> 07:00  crosses midnight
+ *
+ * The old approach asked for "yesterday" and computed a window from it, which
+ * missed a same-day window entirely and disagreed with what the wake-up
+ * notification reported.
  */
-export async function getSleepForNight(nightDate: string): Promise<NightlySleep> {
-  const settings = await getSleepSettings();
-  const { bedTime, wakeTime } = resolveWindowForNight(
-    nightDate,
-    settings.windowStart,
-    settings.windowEnd
-  );
-
-  // Window hasn't finished yet (e.g. it's currently 2am and wakeTime is 7am
-  // today) - nothing to report yet, avoid showing a misleadingly short
-  // duration for an in-progress night.
-  if (wakeTime.getTime() > Date.now()) {
-    return { nightDate, durationMinutes: null };
-  }
-
+export async function getLastCompletedSleep(): Promise<LastSleep | null> {
   const db = await getDb();
-  const sessions = await db.getAllAsync<any>(
-    `SELECT start_time, end_time FROM screen_sessions
-     WHERE start_time < ? AND (end_time IS NULL OR end_time > ?)
-     ORDER BY start_time ASC;`,
-    [wakeTime.toISOString(), bedTime.toISOString()]
+
+  const row = await db.getFirstAsync<{
+    bed_time: string;
+    wake_time: string;
+    duration_minutes: number | null;
+    status: string;
+  }>(
+    `SELECT bed_time, wake_time, duration_minutes, status FROM sleep_sessions
+     WHERE status IN ('finalized', 'incomplete')
+     ORDER BY wake_time DESC LIMIT 1;`
   );
 
-  // No screen sessions recorded for this night - cannot compute sleep.
-  // Return null to signal "no data" rather than defaulting to full window.
-  if (sessions.length === 0) {
-    return { nightDate, durationMinutes: null };
-  }
+  if (!row) return null;
 
-  let largestGapMinutes = 0;
-  let cursor = bedTime.getTime();
+  const bedTime = new Date(row.bed_time);
+  const wakeTime = new Date(row.wake_time);
 
-  for (const session of sessions) {
-    if (!session.start_time) {
-      console.warn('[sleepCalculator] Skipping session with missing start_time');
-      continue;
-    }
+  return {
+    nightDate: toLocalDateKey(bedTime),
+    bedTime,
+    wakeTime,
+    durationMinutes: row.status === 'incomplete' ? null : row.duration_minutes,
+    status: row.status === 'incomplete' ? 'incomplete' : 'finalized',
+  };
+}
 
-    try {
-      const sessionStart = new Date(session.start_time).getTime();
-      // Ongoing session (end_time null) - treat "now" as its end for gap math,
-      // clipped to wakeTime below anyway.
-      const sessionEnd = session.end_time ? new Date(session.end_time).getTime() : Date.now();
-
-      const gapStart = cursor;
-      const gapEnd = Math.min(sessionStart, wakeTime.getTime());
-      if (gapEnd > gapStart) {
-        largestGapMinutes = Math.max(largestGapMinutes, Math.round((gapEnd - gapStart) / 60000));
-      }
-
-      cursor = Math.max(cursor, sessionEnd);
-    } catch (err) {
-      console.warn('[sleepCalculator] Failed to parse session timestamps:', session, err);
-      continue;
-    }
-  }
-
-  // Final gap from the last session's end (or bedTime, if no sessions at
-  // all) through to wakeTime.
-  const finalGapEnd = wakeTime.getTime();
-  if (finalGapEnd > cursor) {
-    largestGapMinutes = Math.max(largestGapMinutes, Math.round((finalGapEnd - cursor) / 60000));
-  }
-
-  return { nightDate, durationMinutes: largestGapMinutes };
+function toLocalDateKey(d: Date): string {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 /**
- * Returns one result per night for the last `nights` nights (default 7),
- * most recent last - convenient order for a left-to-right weekly bar chart.
- * endNightDate defaults to yesterday's date if omitted.
+ * Returns the last `nights` COMPLETED sleep windows (default 7), most recent
+ * last - the order a left-to-right weekly bar chart wants.
+ *
+ * Reads the recorded `sleep_sessions` occurrences, the same source as the card
+ * and the wake-up notification, so all three always agree. The older approach
+ * walked back N calendar dates and recomputed a window for each, which produced
+ * nothing at all for a same-day window and disagreed with what was notified.
+ *
+ * Occurrences are keyed by the date the window STARTED. A window that is still
+ * in progress is excluded - it has no duration to plot yet.
  */
-export async function getWeeklySleep(
-  endNightDate?: string,
-  nights: number = 7
-): Promise<NightlySleep[]> {
-  const end = endNightDate ? new Date(endNightDate) : (() => {
-    const d = new Date();
-    d.setDate(d.getDate() - 1);
-    return d;
-  })();
+export async function getRecentSleepWindows(nights: number = 7): Promise<NightlySleep[]> {
+  const db = await getDb();
 
-  const results: NightlySleep[] = [];
-  for (let i = nights - 1; i >= 0; i--) {
-    const d = new Date(end);
-    d.setDate(d.getDate() - i);
-    const nightDate = d.toISOString().slice(0, 10);
-    results.push(await getSleepForNight(nightDate));
-  }
+  const rows = await db.getAllAsync<{
+    bed_time: string;
+    duration_minutes: number | null;
+    status: string;
+  }>(
+    `SELECT bed_time, duration_minutes, status FROM sleep_sessions
+     WHERE status IN ('finalized', 'incomplete')
+     ORDER BY wake_time DESC LIMIT ?;`,
+    [nights]
+  );
 
-  return results;
+  // Oldest first for the chart's left-to-right reading order.
+  return rows.reverse().map((row) => ({
+    nightDate: toLocalDateKey(new Date(row.bed_time)),
+    // 'incomplete' means tracking didn't cover the window - render it as a gap
+    // rather than a bar, the same way the card refuses to claim a number.
+    durationMinutes: row.status === 'incomplete' ? null : row.duration_minutes,
+  }));
 }
+

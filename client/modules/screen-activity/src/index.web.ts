@@ -28,6 +28,13 @@ export function cancelSleepTracking(): Promise<void> {
   return Promise.resolve();
 }
 
+export function debugRunSleepWindow(
+  _startInMinutes: number,
+  _lengthMinutes: number
+): Promise<void> {
+  return Promise.resolve();
+}
+
 export function hasUsageAccessPermission(): Promise<boolean> {
   return Promise.resolve(false);
 }

@@ -19,6 +19,7 @@ interface ScreenActivityNativeModule {
   isTracking(): Promise<boolean>;
   scheduleSleepTracking(): Promise<void>;
   cancelSleepTracking(): Promise<void>;
+  debugRunSleepWindow(startInMinutes: number, lengthMinutes: number): Promise<void>;
   hasUsageAccessPermission(): Promise<boolean>;
   openUsageAccessSettings(): Promise<void>;
   addListener(eventName: 'onScreenEvent', listener: (event: ScreenEvent) => void): EventSubscription;
@@ -82,6 +83,24 @@ export function scheduleSleepTracking(): Promise<void> {
  */
 export function cancelSleepTracking(): Promise<void> {
   return ScreenActivityModule.cancelSleepTracking();
+}
+
+/**
+ * TEST HELPER. Arms a compressed sleep window - starting `startInMinutes` from now and
+ * lasting `lengthMinutes` - so the full start -> track -> finalize -> wake-up notification
+ * -> summary card cycle can be verified in minutes instead of waiting for real bedtime.
+ *
+ * It runs the same native alarm/service path as a real window, so what you observe here is
+ * what happens overnight. Call scheduleSleepTracking() afterwards to restore the real window.
+ *
+ * Example: debugRunSleepWindow(2, 3) - window opens in 2 min, closes 3 min later, and the
+ * summary notification fires ~1 min after that.
+ */
+export function debugRunSleepWindow(
+  startInMinutes: number,
+  lengthMinutes: number
+): Promise<void> {
+  return ScreenActivityModule.debugRunSleepWindow(startInMinutes, lengthMinutes);
 }
 
 /**

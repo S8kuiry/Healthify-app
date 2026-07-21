@@ -159,6 +159,38 @@ async function runMigrationsOnce() {
   );
 
 
+  -- One row per sleep-window OCCURRENCE, written by the native side when
+  -- ACTION_SLEEP_START fires and finalized when ACTION_SLEEP_STOP fires.
+  --
+  -- Why this table exists: bed_time/wake_time are resolved ONCE, at start, and
+  -- stored. Previously three places (the alarm scheduler, the service's
+  -- finalize, and the JS card) each re-derived "which window are we talking
+  -- about" from the clock, and disagreed - which is how a same-day window
+  -- (e.g. 10:10 -> 11:33) lost its STOP alarm to the next day's occurrence and
+  -- never produced a wake-up notification. Storing the occurrence makes STOP
+  -- finalize a specific row by id, and lets the card read the last finalized
+  -- row instead of guessing a date.
+  --
+  -- status:
+  --   'tracking'   - window in progress, not yet finalized
+  --   'finalized'  - completed, duration_minutes is trustworthy
+  --   'incomplete' - window closed but tracking was interrupted (service
+  --                  killed / device off), so no duration can be claimed
+  CREATE TABLE IF NOT EXISTS sleep_sessions (
+    id TEXT PRIMARY KEY,
+    bed_time TEXT NOT NULL,          -- ISO timestamp, resolved at START
+    wake_time TEXT NOT NULL,         -- ISO timestamp, resolved at START
+    duration_minutes INTEGER,        -- NULL until finalized
+    status TEXT NOT NULL DEFAULT 'tracking'
+      CHECK (status IN ('tracking', 'finalized', 'incomplete')),
+    last_heartbeat TEXT,             -- ISO timestamp, refreshed while service is alive
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_sleep_sessions_wake_time
+    ON sleep_sessions(wake_time);
+
+
 
 
   `);

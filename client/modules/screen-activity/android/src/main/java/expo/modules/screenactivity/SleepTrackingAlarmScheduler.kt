@@ -26,6 +26,33 @@ object SleepTrackingAlarmScheduler {
   private const val FINAL_REMINDER_OFFSET_MIN = 10  // 10 minutes before
   private const val STOP_GRACE_MIN = 6              // 6 minutes after window end
 
+  // The concrete window instants an alarm belongs to, carried on the START/STOP
+  // intents. The receiver hands them to the service so it finalizes the exact
+  // occurrence that was tracked instead of re-deriving one from the clock.
+  const val EXTRA_BED_TIME_MS = "extra_bed_time_ms"
+  const val EXTRA_WAKE_TIME_MS = "extra_wake_time_ms"
+
+  // Keeps each alarm's "show" PendingIntent in its own request-code space, so it
+  // can never collide with (and, via FLAG_UPDATE_CURRENT, clobber the extras of)
+  // the alarm PendingIntent it accompanies. Large enough not to overlap the
+  // 9201-9204 alarm codes.
+  private const val SHOW_INTENT_REQUEST_CODE_OFFSET = 100
+
+  // Request codes for the TEST-ONLY compressed window. They must differ from the
+  // real START/STOP codes: SleepAlarmReceiver re-arms the real window after every
+  // alarm fires, so a debug alarm sharing a request code gets overwritten by the
+  // real (far-future) one the instant the debug START fires - which is exactly
+  // how the debug STOP silently vanished before it could finalize anything.
+  private const val DEBUG_START_REQUEST_CODE = 9211
+  private const val DEBUG_STOP_REQUEST_CODE = 9212
+
+  // How far past its nominal deadline an unfired STOP is still considered "in
+  // flight" and protected from being overwritten. Doze and OEM alarm throttling
+  // routinely delay alarms by minutes; without this slack a re-arm during that
+  // delay would replace the pending STOP and the window would never finalize.
+  // Bounded so a permanently-stuck row can't block scheduling forever.
+  private const val LOST_STOP_OVERRUN_MS = 2L * 60L * 60L * 1000L // 2 hours
+
   fun scheduleNext(context: Context) {
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -79,10 +106,53 @@ object SleepTrackingAlarmScheduler {
       // "alarm-like" repeat. Skipping past-due instants breaks that loop: the reminders
       // that already fired for the current window are simply not re-armed, and only the
       // still-future alarms (typically STOP, then the next night's set) stay scheduled.
+      // The window this set of alarms describes. Carried on the START/STOP
+      // intents so the service finalizes the occurrence that was actually
+      // tracked, rather than re-deriving a window from the clock at fire time.
+      val windowBedTimeMs = startAnchor.timeInMillis
+      val windowWakeTimeMs = offsetFrom(startAnchor, windowLengthMin).timeInMillis
+
       scheduleAlarmIfFuture(context, alarmManager, earlyReminderTime, now, "ACTION_SLEEP_EARLY_REMINDER", EARLY_REMINDER_REQUEST_CODE)
       scheduleAlarmIfFuture(context, alarmManager, finalReminderTime, now, "ACTION_SLEEP_FINAL_REMINDER", FINAL_REMINDER_REQUEST_CODE)
-      scheduleAlarmIfFuture(context, alarmManager, startAlarmTime, now, "ACTION_SLEEP_START", START_REQUEST_CODE)
-      scheduleAlarmIfFuture(context, alarmManager, stopAlarmTime, now, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE)
+      scheduleAlarmIfFuture(
+        context, alarmManager, startAlarmTime, now, "ACTION_SLEEP_START", START_REQUEST_CODE,
+        windowBedTimeMs, windowWakeTimeMs
+      )
+      // STOP is the one alarm that must never be clobbered by a re-arm.
+      //
+      // Two distinct hazards, both of which silently killed the wake-up summary:
+      //
+      //  1. Already finalized -> nothing left to do; just clear any stale alarm.
+      //  2. Still UNFINALIZED but pending -> a re-arm here would compute the NEXT
+      //     window's STOP and overwrite the one that hasn't fired yet. This is what
+      //     happened at 16:00:56 for a 15:00-16:00 window: STOP was due at 16:06,
+      //     the app re-armed, and today's STOP was replaced by tomorrow's. The
+      //     window never finalized, so no notification and no summary row.
+      //
+      // Case 2 is caught by asking the DB whether an occurrence is still tracking
+      // and its STOP deadline hasn't passed - a stronger test than the anchor's
+      // date arithmetic, and one that survives Doze delaying STOP past its grace.
+      val pendingStopMs = pendingUnfinalizedStopMs(context)
+      when {
+        isOccurrenceFinalized(context, windowWakeTimeMs) -> {
+          cancelAlarm(context, alarmManager, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE)
+          Log.d(TAG, "Occurrence ending ${Date(windowWakeTimeMs)} already finalized; STOP not re-armed")
+        }
+        pendingStopMs != null && pendingStopMs != stopAlarmTime.timeInMillis -> {
+          // Leave the in-flight STOP exactly as armed - do not touch it.
+          Log.d(
+            TAG,
+            "Leaving in-flight STOP armed for ${Date(pendingStopMs)}; " +
+              "not overwriting with ${stopAlarmTime.time}"
+          )
+        }
+        else -> {
+          scheduleAlarmIfFuture(
+            context, alarmManager, stopAlarmTime, now, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE,
+            windowBedTimeMs, windowWakeTimeMs
+          )
+        }
+      }
 
       Log.d(
         TAG,
@@ -94,6 +164,72 @@ object SleepTrackingAlarmScheduler {
     }
   }
 
+  /**
+   * TEST HELPER. Arms a compressed sleep window starting [startInMinutes] from
+   * now and running for [lengthMinutes], so the whole START -> track -> STOP ->
+   * summary cycle can be exercised in a few minutes.
+   *
+   * It deliberately reuses the SAME scheduleAlarm/receiver/service path as a real
+   * window - only the instants differ - so a passing test says something true
+   * about production behavior. The 1-hour and 10-minute bedtime reminders are
+   * skipped here only because they would land in the past for a short window.
+   *
+   * Call cancelAll() (or scheduleNext()) afterwards to return to the real window.
+   */
+  /**
+   * Wall-clock instant the in-flight debug window's STOP is due, or 0 when no
+   * debug window is running. Process-local on purpose: a test window never needs
+   * to survive a restart, and keeping it out of the DB means the test harness
+   * cannot perturb real tracking state.
+   */
+  @Volatile
+  private var debugWindowStopDueAtMs: Long = 0L
+
+  /**
+   * True while a TEST window is still pending its STOP. SleepAlarmReceiver
+   * consults this to suppress the routine re-arm of the REAL window: that re-arm
+   * runs after every alarm fires and would otherwise overwrite the debug STOP
+   * with the real window's far-future one, so the test window could start but
+   * never finalize.
+   */
+  fun isDebugWindowInFlight(): Boolean {
+    return debugWindowStopDueAtMs > 0L && System.currentTimeMillis() < debugWindowStopDueAtMs
+  }
+
+  fun scheduleDebugWindow(context: Context, startInMinutes: Int, lengthMinutes: Int) {
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !alarmManager.canScheduleExactAlarms()) {
+      Log.w(TAG, "Cannot schedule debug window - exact alarm permission not granted")
+      return
+    }
+
+    val now = Calendar.getInstance()
+    val startAnchor = offsetFrom(now, startInMinutes)
+    val wakeInstant = offsetFrom(startAnchor, lengthMinutes)
+    // Short grace so the test doesn't wait the full 6 minutes production uses.
+    val stopInstant = offsetFrom(wakeInstant, 1)
+
+    val bedTimeMs = startAnchor.timeInMillis
+    val wakeTimeMs = wakeInstant.timeInMillis
+
+    scheduleAlarm(
+      context, alarmManager, startAnchor, "ACTION_SLEEP_START", DEBUG_START_REQUEST_CODE,
+      bedTimeMs, wakeTimeMs
+    )
+    scheduleAlarm(
+      context, alarmManager, stopInstant, "ACTION_SLEEP_STOP", DEBUG_STOP_REQUEST_CODE,
+      bedTimeMs, wakeTimeMs
+    )
+
+    // Suppress the real window's re-arm until this test STOP has fired (plus a
+    // small margin so the receiver's own post-STOP re-arm still counts as
+    // in-flight and doesn't race the finalize).
+    debugWindowStopDueAtMs = stopInstant.timeInMillis + 30_000L
+
+    Log.d(TAG, "DEBUG window armed: start=${startAnchor.time} wake=${wakeInstant.time} stop=${stopInstant.time}")
+  }
+
   fun cancelAll(context: Context) {
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -103,6 +239,11 @@ object SleepTrackingAlarmScheduler {
       cancelAlarm(context, alarmManager, "ACTION_SLEEP_FINAL_REMINDER", FINAL_REMINDER_REQUEST_CODE)
       cancelAlarm(context, alarmManager, "ACTION_SLEEP_START", START_REQUEST_CODE)
       cancelAlarm(context, alarmManager, "ACTION_SLEEP_STOP", STOP_REQUEST_CODE)
+
+      // Also clear any test window, so cancelling always leaves a clean slate.
+      cancelAlarm(context, alarmManager, "ACTION_SLEEP_START", DEBUG_START_REQUEST_CODE)
+      cancelAlarm(context, alarmManager, "ACTION_SLEEP_STOP", DEBUG_STOP_REQUEST_CODE)
+      debugWindowStopDueAtMs = 0L
 
       Log.d(TAG, "Cancelled all 4 alarms")
     } catch (e: Exception) {
@@ -123,10 +264,12 @@ object SleepTrackingAlarmScheduler {
     triggerTime: Calendar,
     now: Calendar,
     action: String,
-    requestCode: Int
+    requestCode: Int,
+    windowBedTimeMs: Long? = null,
+    windowWakeTimeMs: Long? = null
   ) {
     if (triggerTime.after(now)) {
-      scheduleAlarm(context, alarmManager, triggerTime, action, requestCode)
+      scheduleAlarm(context, alarmManager, triggerTime, action, requestCode, windowBedTimeMs, windowWakeTimeMs)
     } else {
       cancelAlarm(context, alarmManager, action, requestCode)
       Log.d(TAG, "Skipped past-due alarm $action (would have fired at ${triggerTime.time})")
@@ -138,10 +281,14 @@ object SleepTrackingAlarmScheduler {
     alarmManager: AlarmManager,
     triggerTime: Calendar,
     action: String,
-    requestCode: Int
+    requestCode: Int,
+    windowBedTimeMs: Long? = null,
+    windowWakeTimeMs: Long? = null
   ) {
     val intent = Intent(context, SleepAlarmReceiver::class.java).apply {
       this.action = action
+      if (windowBedTimeMs != null) putExtra(EXTRA_BED_TIME_MS, windowBedTimeMs)
+      if (windowWakeTimeMs != null) putExtra(EXTRA_WAKE_TIME_MS, windowWakeTimeMs)
     }
 
     val pendingIntent = PendingIntent.getBroadcast(context, requestCode, intent, FLAGS)
@@ -162,10 +309,19 @@ object SleepTrackingAlarmScheduler {
     // allows.
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
       // The "show" intent opens the app when the user taps the status-bar alarm chip.
+      //
+      // It MUST use a distinct request code and carry the same extras. Intent
+      // equality ignores extras, so a show intent sharing `requestCode` matches
+      // the alarm's PendingIntent, and FLAG_UPDATE_CURRENT then overwrites the
+      // alarm's extras with this one's - which is how the window instants
+      // arrived at the receiver as bed=0 wake=0 and no occurrence was recorded.
       val showIntent = Intent(context, SleepAlarmReceiver::class.java).apply {
         this.action = action
+        if (windowBedTimeMs != null) putExtra(EXTRA_BED_TIME_MS, windowBedTimeMs)
+        if (windowWakeTimeMs != null) putExtra(EXTRA_WAKE_TIME_MS, windowWakeTimeMs)
       }
-      val showPending = PendingIntent.getBroadcast(context, requestCode, showIntent, FLAGS)
+      val showPending =
+        PendingIntent.getBroadcast(context, requestCode + SHOW_INTENT_REQUEST_CODE_OFFSET, showIntent, FLAGS)
       val info = AlarmManager.AlarmClockInfo(triggerTime.timeInMillis, showPending)
       alarmManager.setAlarmClock(info, pendingIntent)
     } else {
@@ -186,9 +342,18 @@ object SleepTrackingAlarmScheduler {
       this.action = action
     }
 
-    val pendingIntent = PendingIntent.getBroadcast(context, requestCode, intent, FLAGS)
-    alarmManager.cancel(pendingIntent)
-    pendingIntent.cancel()
+    // Look the existing PendingIntent up with FLAG_NO_CREATE rather than
+    // FLAG_UPDATE_CURRENT: the latter would rewrite the live alarm's extras with
+    // this extra-less intent as a side effect of trying to cancel it, wiping the
+    // window instants off an alarm we may not even end up cancelling.
+    val cancelFlags = PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+    PendingIntent.getBroadcast(context, requestCode, intent, cancelFlags)?.let {
+      alarmManager.cancel(it)
+      it.cancel()
+    }
+    PendingIntent.getBroadcast(
+      context, requestCode + SHOW_INTENT_REQUEST_CODE_OFFSET, intent, cancelFlags
+    )?.cancel()
 
     Log.d(TAG, "Cancelled alarm $action")
   }
@@ -230,11 +395,23 @@ object SleepTrackingAlarmScheduler {
       add(Calendar.MINUTE, windowLengthMin)
     }
 
-    // If today's window has already fully ended, track tomorrow's instead.
-    // Using the END (not the start) means an in-progress window is still tracked
-    // today, and re-arming right after START fires keeps the SAME night's start
-    // (its end is still in the future) instead of jumping a day.
-    return if (endToday.after(now)) {
+    // Today's window is still "current" until its STOP has had a chance to fire,
+    // i.e. until end + STOP_GRACE_MIN - NOT merely until end.
+    //
+    // This grace matters: STOP is armed at end+6min, so during those 6 minutes the
+    // window has ended but has NOT been finalized yet. Rolling the anchor to
+    // tomorrow the instant `end` passed meant any re-arm inside that gap (the app
+    // being opened, a screen event, scheduleSleepTracking() on resume) recomputed
+    // STOP for TOMORROW and overwrote the still-pending one for TODAY. The window
+    // then never finalized: no wake-up notification, no summary row, so the card
+    // and graph stayed empty. Extending the boundary past the grace keeps the
+    // in-flight occurrence anchored to today until it has actually been finalized.
+    val endTodayWithGrace = Calendar.getInstance().apply {
+      timeInMillis = endToday.timeInMillis
+      add(Calendar.MINUTE, STOP_GRACE_MIN)
+    }
+
+    return if (endTodayWithGrace.after(now)) {
       startToday
     } else {
       Calendar.getInstance().apply {
@@ -252,24 +429,90 @@ object SleepTrackingAlarmScheduler {
     }
   }
 
+  /**
+   * True when the occurrence ending at [wakeTimeMs] has already been finalized,
+   * so its STOP alarm must not be re-armed. Opened read-write + WAL for the same
+   * reason as readSleepSettings: a plain read-only connection would miss the
+   * service's just-committed finalize sitting in the -wal file.
+   */
+  /**
+   * The STOP deadline of an occurrence that is still 'tracking' and whose STOP has
+   * not fired yet, or null when there is none.
+   *
+   * This guards the real-world failure seen on 2026-07-21: a 15:00-16:00 window had
+   * STOP armed for 16:06, a reminder alarm at 16:00 brought the app to the
+   * foreground, app startup called scheduleSleepTracking(), and scheduleNext()
+   * recomputed STOP for the NEXT window - overwriting the pending one. The window
+   * never finalized: no wake-up notification, no summary row, empty card and graph.
+   *
+   * Note this protects sleep tracking from ITSELF. The reminder-alarm module uses
+   * separate PendingIntents and a different receiver, so the two alarm sets never
+   * collide - a reminder and a sleep event at the same minute both fire normally.
+   *
+   * Asking the DB "is an occurrence still tracking?" is stronger than the anchor's
+   * date arithmetic because it stays true even when Doze delays STOP past its grace.
+   */
+  private fun pendingUnfinalizedStopMs(context: Context): Long? {
+    var db: SQLiteDatabase? = null
+    return try {
+      val dbFile = File(context.filesDir, "SQLite/healthapp.db")
+      if (!dbFile.exists()) return null
+
+      db = SafeDb.openAt(dbFile)
+      val session = SleepSessionRepo.findLatestTracking(db) ?: return null
+
+      val stopDueMs = session.wakeTimeMs + STOP_GRACE_MIN * 60_000L
+      if (System.currentTimeMillis() < stopDueMs + LOST_STOP_OVERRUN_MS) stopDueMs else null
+    } catch (e: Exception) {
+      // Missing sleep_sessions table (install predating the migration) lands here
+      // - treat as "nothing pending" so scheduling behaves as it did before.
+      Log.w(TAG, "Could not check pending STOP", e)
+      null
+    } finally {
+      db?.close()
+    }
+  }
+
+  private fun isOccurrenceFinalized(context: Context, wakeTimeMs: Long): Boolean {
+    var db: SQLiteDatabase? = null
+    return try {
+      val dbFile = File(context.filesDir, "SQLite/healthapp.db")
+      if (!dbFile.exists()) return false
+
+      db = SafeDb.openAt(dbFile)
+      SleepSessionRepo.isAlreadyFinalized(db, wakeTimeMs)
+    } catch (e: Exception) {
+      // A missing sleep_sessions table (install predating the migration) lands
+      // here - treat as "not finalized" so scheduling behaves as it did before.
+      Log.w(TAG, "Could not check occurrence status", e)
+      false
+    } finally {
+      db?.close()
+    }
+  }
+
   private fun readSleepSettings(context: Context): Pair<Int, Int>? {
     var db: SQLiteDatabase? = null
     return try {
       val dbFile = File(context.filesDir, "SQLite/healthapp.db")
       if (!dbFile.exists()) return null
 
-      // IMPORTANT: open read-WRITE with WAL enabled, NOT plain OPEN_READONLY.
+      // IMPORTANT: open read-WRITE, NOT plain OPEN_READONLY.
       //
       // The JS side (expo-sqlite) runs the DB in WAL mode and its UPDATE to the
       // sleep window lands in the -wal file first (not yet checkpointed into the
-      // main .db). A separate connection opened with plain OPEN_READONLY does not
-      // attach the -wal, so it reads the STALE pre-update value from the main db
-      // file - which is exactly why a freshly-saved window (e.g. 03:40) was
-      // ignored and the scheduler kept re-arming the old 23:00 default.
-      // Opening read-write + enableWriteAheadLogging() makes this connection a
-      // proper WAL reader that sees the JS connection's committed frames.
-      db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
-      db.enableWriteAheadLogging()
+      // main .db). A connection opened plain-READONLY does not attach the -wal,
+      // so it reads the STALE pre-update value from the main db file - which is
+      // exactly why a freshly-saved window (e.g. 03:40) was ignored and the
+      // scheduler kept re-arming the old 23:00 default.
+      //
+      // Read-write is all that is needed for that: WAL is already on (a
+      // persistent property of the file), so this connection reads the JS
+      // connection's committed frames automatically. It must NOT additionally
+      // call enableWriteAheadLogging() - that makes Android's framework SQLite
+      // seize WAL ownership of a file journalled by expo-sqlite's bundled libsql
+      // engine, which corrupted the database. See SafeDb.
+      db = SafeDb.openAt(dbFile)
       db.rawQuery("SELECT window_start, window_end FROM sleep_settings WHERE id = 1;", null).use { c ->
         if (c.moveToFirst() && !c.isNull(0) && !c.isNull(1)) {
           val windowStart = c.getString(0)  // 'HH:mm'

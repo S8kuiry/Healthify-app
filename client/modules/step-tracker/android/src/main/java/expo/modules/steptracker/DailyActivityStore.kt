@@ -47,23 +47,25 @@ object DailyActivityStore {
     calorieGoal: Int,
     attempt: Int
   ) {
-    // IMPORTANT: Must use the same DB file location as expo-sqlite.
-    // expo-sqlite defaultDatabaseDirectory on Android is: context.filesDir + "/SQLite"
-    val dbDir = File(context.filesDir, "SQLite")
-    if (!dbDir.exists()) dbDir.mkdirs()
-    val dbFile = File(dbDir, DB_NAME)
+    // Open through SafeDb: the file is created and WAL-journalled by expo-sqlite's
+    // bundled libsql engine, so a framework connection must NOT call
+    // openOrCreateDatabase()/enableWriteAheadLogging() on it. Doing so made the
+    // framework seize WAL ownership of a libsql-owned file and corrupted it
+    // ("database disk image is malformed") seconds after creation. WAL itself is
+    // unchanged - it stays on, set by JS, and this connection uses it.
     var db: SQLiteDatabase? = null
     try {
-      db = SQLiteDatabase.openOrCreateDatabase(dbFile, null)
-      // Enable WAL mode to handle concurrent access from screen activity service
-      db.enableWriteAheadLogging()
+      // Immutable local so the null check smart-casts for the rest of the block;
+      // `db` still holds it for the finally-close below.
+      val conn = SafeDb.open(context) ?: return
+      db = conn
 
       if (!loggedDbPathOnce) {
         loggedDbPathOnce = true
-        Log.w(TAG, "using sqlite path=${db.path} (expected expo-sqlite dir=${dbDir.absolutePath})")
+        Log.w(TAG, "using sqlite path=${conn.path}")
       }
-      if (!tableExists(db)) {
-        Log.w(TAG, "upsert skipped — $TABLE not found (db.path=${db.path}); JS migrations must run first")
+      if (!tableExists(conn)) {
+        Log.w(TAG, "upsert skipped — $TABLE not found (db.path=${conn.path}); JS migrations must run first")
         return
       }
 
@@ -74,10 +76,10 @@ object DailyActivityStore {
         put("calorie_goal", calorieGoal)
       }
 
-      val updated = db.update(TABLE, values, "date = ?", arrayOf(date))
+      val updated = conn.update(TABLE, values, "date = ?", arrayOf(date))
       if (updated == 0) {
         values.put("date", date)
-        db.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_ABORT)
+        conn.insertWithOnConflict(TABLE, null, values, SQLiteDatabase.CONFLICT_ABORT)
       }
       Log.d(TAG, "Successfully upserted activity for date=$date steps=$steps on attempt $attempt")
     } catch (e: Exception) {

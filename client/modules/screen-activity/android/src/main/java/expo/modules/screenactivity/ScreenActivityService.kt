@@ -28,13 +28,57 @@ class ScreenActivityService : Service() {
   private var receiver: ScreenEventReceiver? = null
   private var openSessionId: String? = null
 
+  /** The sleep_sessions row for the window currently being tracked, if any. */
+  private var activeSleepSessionId: String? = null
+
+  /**
+   * Periodic liveness marker for the active sleep occurrence. A window that ends
+   * with zero screen sessions is ambiguous - perfect sleep, or a service the OEM
+   * killed hours ago. The heartbeat is what lets finalize tell those apart, so we
+   * report "tracking was interrupted" instead of inventing a full night's sleep.
+   */
+  private val heartbeatHandler = android.os.Handler(android.os.Looper.getMainLooper())
+  private val heartbeatRunnable = object : Runnable {
+    override fun run() {
+      recordHeartbeat()
+      heartbeatHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+    }
+  }
+
   companion object {
     private const val TAG = "ScreenActivityService"
     private const val CHANNEL_ID = "screen_activity_tracking"
     private const val NOTIFICATION_ID = 9101 // Arbitrary but must be unique app-wide
 
+    /**
+     * How often the active sleep occurrence's liveness marker is refreshed. Five
+     * minutes is well inside SleepSessionRepo's 15-minute staleness tolerance, so
+     * a couple of missed ticks (Doze, brief CPU starvation) won't be mistaken for
+     * the service having been killed.
+     */
+    private const val HEARTBEAT_INTERVAL_MS = 5 * 60 * 1000L
+
+    const val ACTION_BEGIN_WINDOW = "ACTION_BEGIN_WINDOW"
+
     fun start(context: Context) {
       val intent = Intent(context, ScreenActivityService::class.java)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+      } else {
+        context.startService(intent)
+      }
+    }
+
+    /**
+     * Starts the service for a specific sleep-window occurrence, recording it in
+     * `sleep_sessions` so STOP can later finalize that exact row.
+     */
+    fun startForWindow(context: Context, bedTimeMs: Long, wakeTimeMs: Long) {
+      val intent = Intent(context, ScreenActivityService::class.java).apply {
+        action = ACTION_BEGIN_WINDOW
+        putExtra(SleepTrackingAlarmScheduler.EXTRA_BED_TIME_MS, bedTimeMs)
+        putExtra(SleepTrackingAlarmScheduler.EXTRA_WAKE_TIME_MS, wakeTimeMs)
+      }
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         context.startForegroundService(intent)
       } else {
@@ -52,13 +96,54 @@ class ScreenActivityService : Service() {
     startForeground(NOTIFICATION_ID, buildNotification())
     registerScreenReceiver()
     registerNativeListener()
+    resumeActiveWindow()
+  }
+
+  /**
+   * Re-attaches to an in-progress sleep occurrence after the service is recreated
+   * (START_STICKY restart, or a plain start() while a window is running). Without
+   * this the heartbeat would stay dead for the rest of the window and finalize
+   * would wrongly conclude tracking never covered it.
+   */
+  private fun resumeActiveWindow() {
+    if (activeSleepSessionId != null) return
+
+    var db: SQLiteDatabase? = null
+    try {
+      db = openDatabase() ?: return
+      val session = SleepSessionRepo.findLatestTracking(db) ?: return
+      // Only adopt a window that is genuinely still in progress.
+      if (System.currentTimeMillis() >= session.wakeTimeMs) return
+
+      activeSleepSessionId = session.id
+      Log.d(TAG, "Resumed in-progress sleep occurrence ${session.id}")
+      startHeartbeat()
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to resume active sleep window", e)
+    } finally {
+      db?.apply {
+        try {
+          close()
+        } catch (e: Exception) {
+          Log.w(TAG, "Error closing database", e)
+        }
+      }
+    }
   }
 
   override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
     when (intent?.action) {
+      ACTION_BEGIN_WINDOW -> {
+        val bedTimeMs = intent.getLongExtra(SleepTrackingAlarmScheduler.EXTRA_BED_TIME_MS, 0L)
+        val wakeTimeMs = intent.getLongExtra(SleepTrackingAlarmScheduler.EXTRA_WAKE_TIME_MS, 0L)
+        Log.d(TAG, "Received ACTION_BEGIN_WINDOW (bed=$bedTimeMs wake=$wakeTimeMs)")
+        beginWindow(bedTimeMs, wakeTimeMs)
+        return START_STICKY
+      }
       "ACTION_FINALIZE_AND_STOP" -> {
         Log.d(TAG, "Received ACTION_FINALIZE_AND_STOP")
-        finalizeAndStop()
+        val wakeTimeMs = intent.getLongExtra(SleepTrackingAlarmScheduler.EXTRA_WAKE_TIME_MS, 0L)
+        finalizeAndStop(wakeTimeMs)
         return START_NOT_STICKY
       }
     }
@@ -69,6 +154,7 @@ class ScreenActivityService : Service() {
   }
 
   override fun onDestroy() {
+    stopHeartbeat()
     unregisterNativeListener()
     unregisterScreenReceiver()
     super.onDestroy()
@@ -161,7 +247,73 @@ class ScreenActivityService : Service() {
     // The dispatcher will clean up on service destroy
   }
 
-  private fun finalizeAndStop() {
+  /**
+   * Records the sleep-window occurrence this service was started for, so the
+   * later STOP can finalize that exact row. Idempotent - a repeated START for
+   * the same occurrence reuses the existing row.
+   */
+  private fun beginWindow(bedTimeMs: Long, wakeTimeMs: Long) {
+    if (bedTimeMs <= 0L || wakeTimeMs <= 0L) {
+      Log.w(TAG, "beginWindow called without valid window instants; tracking only")
+      return
+    }
+
+    var db: SQLiteDatabase? = null
+    try {
+      db = openDatabase() ?: return
+      activeSleepSessionId = SleepSessionRepo.startSession(db, bedTimeMs, wakeTimeMs)
+      Log.d(TAG, "Began sleep window, session=$activeSleepSessionId")
+      startHeartbeat()
+    } catch (e: Exception) {
+      Log.e(TAG, "Failed to begin sleep window", e)
+    } finally {
+      db?.apply {
+        try {
+          close()
+        } catch (e: Exception) {
+          Log.w(TAG, "Error closing database", e)
+        }
+      }
+    }
+  }
+
+  private fun startHeartbeat() {
+    heartbeatHandler.removeCallbacks(heartbeatRunnable)
+    heartbeatHandler.post(heartbeatRunnable)
+  }
+
+  private fun stopHeartbeat() {
+    heartbeatHandler.removeCallbacks(heartbeatRunnable)
+  }
+
+  /** Marks the active sleep occurrence as still being watched. */
+  private fun recordHeartbeat() {
+    val sessionId = activeSleepSessionId ?: return
+    var db: SQLiteDatabase? = null
+    try {
+      db = openDatabase() ?: return
+      SleepSessionRepo.touchHeartbeat(db, sessionId)
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to record heartbeat", e)
+    } finally {
+      db?.apply {
+        try {
+          close()
+        } catch (e: Exception) {
+          Log.w(TAG, "Error closing database", e)
+        }
+      }
+    }
+  }
+
+  /**
+   * Finalizes the sleep-window occurrence identified by [intentWakeTimeMs] (the
+   * wake instant the STOP alarm was armed for). Finalizing the STORED occurrence
+   * - rather than a window re-derived from the clock - is what makes a same-day
+   * window (e.g. 10:10 -> 11:33) finalize correctly instead of being matched
+   * against the next day's occurrence.
+   */
+  private fun finalizeAndStop(intentWakeTimeMs: Long = 0L) {
     var db: SQLiteDatabase? = null
     try {
       db = openDatabase()
@@ -177,18 +329,25 @@ class ScreenActivityService : Service() {
           }
         }
 
-        // Query all sessions in the window that just ended.
-        val settings = readSleepSettings(db) ?: return stopSelf()
-        val (windowStartMin, windowEndMin) = settings
+        // Resolve the occurrence to finalize: prefer the row this service is
+        // actively tracking, then the row matching the STOP alarm's wake
+        // instant, and only then fall back to the latest still-tracking row
+        // (covers an alarm armed by a previous install).
+        val session = activeSleepSessionId?.let { SleepSessionRepo.findById(db, it) }
+          ?: SleepSessionRepo.findLatestTracking(db)
 
-        // Anchor the window to the night that just ended at "now". wakeTime is
-        // the most recent occurrence of windowEnd at or before now; bedTime is
-        // one window-length earlier. This correctly places bedTime on the
-        // PREVIOUS calendar day for a window that crosses midnight (e.g.
-        // 23:00 -> 07:00), which the old "today at HH:mm" anchoring got wrong -
-        // it pointed bedTime at tonight instead of last night, so the query
-        // matched none of the sessions actually recorded overnight.
-        val (bedTime, wakeTime) = resolveEndedWindow(windowStartMin, windowEndMin)
+        if (session == null) {
+          Log.w(TAG, "No tracked sleep occurrence to finalize; skipping summary")
+          return stopSelf()
+        }
+
+        if (session.status != SleepSessionRepo.STATUS_TRACKING) {
+          Log.d(TAG, "Sleep occurrence ${session.id} already finalized; skipping duplicate")
+          return stopSelf()
+        }
+
+        val bedTime = Date(session.bedTimeMs)
+        val wakeTime = Date(session.wakeTimeMs)
 
         // Filter purely by the timestamp range (start before wake, still open
         // or ending after bed). The old query also constrained `date = today`,
@@ -211,26 +370,54 @@ class ScreenActivityService : Service() {
         }
         cursor.close()
 
-        // Compute sleep duration
-        val durationMinutes = SleepGapCalculator.computeLargestGapMinutes(
-          sessions,
-          bedTime.time,
-          wakeTime.time
-        )
+        // Compute sleep duration.
+        //
+        // A window with NO screen sessions is ambiguous: either the user never
+        // touched the phone (genuinely undisturbed sleep) or tracking was dead
+        // the whole time (OEM battery killer, device powered off) and we simply
+        // saw nothing. Only the heartbeat can tell those apart, so we claim the
+        // full window solely when tracking was alive through it - otherwise the
+        // occurrence is marked 'incomplete' and we never invent sleep we did
+        // not observe.
+        val durationMinutes: Int? = if (sessions.isEmpty()) {
+          if (SleepSessionRepo.trackingCoveredWindow(session)) {
+            ((wakeTime.time - bedTime.time) / 60000).toInt()
+          } else {
+            Log.w(TAG, "No sessions and stale heartbeat; marking occurrence incomplete")
+            null
+          }
+        } else {
+          SleepGapCalculator.computeLargestGapMinutes(sessions, bedTime.time, wakeTime.time)
+        }
+
+        SleepSessionRepo.finalizeSession(db, session.id, durationMinutes)
+        activeSleepSessionId = null
 
         // Run pruning with retry logic
         try {
-          val windowStartStr = String.format("%02d:%02d", windowStartMin / 60, windowStartMin % 60)
-          val windowEndStr = String.format("%02d:%02d", windowEndMin / 60, windowEndMin % 60)
-          ScreenSessionRepo.pruneOldScreenDataWithRetry(db, windowStartStr, windowEndStr)
+          val settings = readSleepSettings(db)
+          if (settings != null) {
+            val (windowStartMin, windowEndMin) = settings
+            val windowStartStr = String.format("%02d:%02d", windowStartMin / 60, windowStartMin % 60)
+            val windowEndStr = String.format("%02d:%02d", windowEndMin / 60, windowEndMin % 60)
+            ScreenSessionRepo.pruneOldScreenDataWithRetry(db, windowStartStr, windowEndStr)
+          }
+          // Keep the occurrence table bounded too - it would otherwise grow
+          // forever, since only raw screen_sessions were ever pruned.
+          SleepSessionRepo.pruneOldSessions(db)
         } catch (e: Exception) {
           Log.w(TAG, "Pruning failed, continuing anyway", e)
         }
 
-        // Post summary notification
-        SleepSummaryNotifier.postSleepSummary(this, durationMinutes)
-
-        Log.d(TAG, "Finalized sleep tracking: $durationMinutes minutes")
+        // Post summary notification only when we have a duration to report.
+        // An incomplete occurrence gets no "here's your sleep" notification,
+        // since there is nothing honest to put in it.
+        if (durationMinutes != null) {
+          SleepSummaryNotifier.postSleepSummary(this, durationMinutes)
+          Log.d(TAG, "Finalized sleep tracking: $durationMinutes minutes")
+        } else {
+          Log.d(TAG, "Finalized sleep tracking as incomplete; no summary posted")
+        }
       }
     } catch (e: Exception) {
       Log.e(TAG, "Error during finalize", e)
@@ -256,10 +443,12 @@ class ScreenActivityService : Service() {
         Log.w(TAG, "Database file not found")
         return null
       }
-      val db = SQLiteDatabase.openDatabase(dbFile.absolutePath, null, SQLiteDatabase.OPEN_READWRITE)
-      // Ensure WAL mode is enabled for concurrent access from step tracker and other services
-      db.enableWriteAheadLogging()
-      Log.d(TAG, "Database opened with WAL mode enabled")
+      // WAL stays on - it is a persistent property of the file, set by the JS
+      // migrations - but this connection must not try to OWN it. See SafeDb:
+      // enableWriteAheadLogging() from Android's framework SQLite on a file
+      // journalled by expo-sqlite's bundled libsql engine corrupts it.
+      val db = SafeDb.openAt(dbFile)
+      Log.d(TAG, "Database opened (using existing WAL)")
       db
     } catch (e: Exception) {
       Log.e(TAG, "Failed to open database", e)

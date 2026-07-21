@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState } from "react";
 import { runMigrations } from '../db/schema';
+import { isCorruptionError, recoverCorruptDatabase } from '../db/client';
 import { getProfile, upsertProfile } from '../db/profileRepo';
 import { getAllWeightEntries, upsertWeightEntry, upsertWeightEntryForToday, deleteWeightEntry, pruneWeightsBeforeYear } from '../db/weightRepo';
 import { pruneActivityBeforeYear } from '../db/dailyActivityRepo';
@@ -87,7 +88,23 @@ export function ProfileProvider({ children }: { children: React.ReactNode }) {
 
     // NEW — put this in its place:
     const saveProfile = async (newProfile: NonNullable<Profile>) => {
-        await upsertProfile(newProfile);
+        try {
+            await upsertProfile(newProfile);
+        } catch (err) {
+            // Corruption can surface at WRITE time, not just on open: getDb()
+            // probes once when the connection is created and runMigrations()
+            // self-heals during migration, but a malformed image discovered on
+            // this first real insert fell through both. That is the onboarding
+            // "Continue does nothing on first launch, works after a restart"
+            // bug - the restart merely let the open-time probe run the recovery.
+            // Recover and retry here so the very first save succeeds.
+            if (!isCorruptionError(err)) throw err;
+            console.warn('[profileContext] Corrupt DB on first save; recreating and retrying.');
+            await recoverCorruptDatabase();
+            await runMigrations();
+            await upsertProfile(newProfile);
+        }
+
         const entry = await upsertWeightEntryForToday(newProfile.weightKg);
         setProfile(newProfile);
         setWeightHistory((prev) => {

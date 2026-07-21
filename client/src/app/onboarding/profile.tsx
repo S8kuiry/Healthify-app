@@ -5,12 +5,16 @@ import { View, Text, TextInput, Pressable, KeyboardAvoidingView } from 'react-na
 
 
 export default function OnboardingProfileScreen() {
-  const { saveProfile } = useProfile();
+  // dbReady gates the save: on a fresh install the user can reach this screen and
+  // tap Continue before runMigrations() has finished creating user_profile, and
+  // the insert would then reject.
+  const { saveProfile, dbReady } = useProfile();
   const [heightCm, setHeightCm] = useState('');
   const [weightKg, setWeightKg] = useState('');
   const [age, setAge] = useState('');
   const [sex, setSex] = useState<'male' | 'female' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const handleContinue = async () => {
     const h = parseFloat(heightCm);
@@ -29,8 +33,24 @@ export default function OnboardingProfileScreen() {
       setError('Enter a realistic weight in kg (20–300).');
       return;
     }
+    if (!dbReady) {
+      setError('Still getting things ready — try again in a moment.');
+      return;
+    }
+
     setError(null);
-    await saveProfile({ heightCm: h, weightKg: w, age: a, sex, stepGoal: 0, calorieGoal: 0 });
+    setIsSaving(true);
+    try {
+      await saveProfile({ heightCm: h, weightKg: w, age: a, sex, stepGoal: 0, calorieGoal: 0 });
+    } catch (err) {
+      // Without this the rejection was swallowed and the button simply did
+      // nothing - the user saw a dead Continue on first launch, which only
+      // "fixed itself" after a restart let the DB recovery path run.
+      console.error('[Onboarding] Failed to save profile:', err);
+      setError('Could not save your profile. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -104,8 +124,15 @@ export default function OnboardingProfileScreen() {
 
       
 
-      <Pressable className="bg-textSecondary rounded-xl py-4 items-center mt-6" onPress={handleContinue}>
-        <Text className="text-accentLight font-bold text-base">Continue</Text>
+      <Pressable
+        className="bg-textSecondary rounded-xl py-4 items-center mt-6"
+        style={{ opacity: isSaving ? 0.6 : 1 }}
+        disabled={isSaving}
+        onPress={handleContinue}
+      >
+        <Text className="text-accentLight font-bold text-base">
+          {isSaving ? 'Saving…' : 'Continue'}
+        </Text>
       </Pressable>
     </View>
     </ScreenContainer>
