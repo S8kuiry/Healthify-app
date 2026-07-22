@@ -135,6 +135,9 @@ export default function SleepWindowPicker() {
   // unmount cleanup know it must flush the pending write instead of dropping it.
   const pendingSaveRef = useRef(false);
 
+  /** True while a knob is being dragged - suppresses saves until release. */
+  const isDraggingRef = useRef(false);
+
   // Persists the current on-screen pair immediately. Reads the LATEST values
   // from refs (not a render closure), so the write is always internally
   // consistent no matter which handle moved last. Clears any queued timer and
@@ -198,7 +201,21 @@ export default function SleepWindowPicker() {
     if (!hasUserEditedRef.current) return;
     pendingSaveRef.current = true;
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    // Hold off entirely while the finger is down. A save runs a blocking
+    // wal_checkpoint(TRUNCATE) plus a native alarm reschedule, and doing that
+    // mid-gesture stuttered the slider. handleDragStateChange re-arms this the
+    // moment the drag ends, so the debounce below still applies as before.
+    if (isDraggingRef.current) return;
     saveTimeout.current = setTimeout(flushSave, DEBOUNCE_MS);
+  };
+
+  /** Defers writes until the drag finishes, then saves on the normal debounce. */
+  const handleDragStateChange = (dragging: boolean) => {
+    isDraggingRef.current = dragging;
+    if (!dragging && pendingSaveRef.current) {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      saveTimeout.current = setTimeout(flushSave, DEBOUNCE_MS);
+    }
   };
 
   const handleBedChange = (value: number) => {
@@ -275,6 +292,7 @@ export default function SleepWindowPicker() {
         wakeMinutes={wakeTime}
         onChangeBed={handleBedChange}
         onChangeWake={handleWakeChange}
+        onDragStateChange={handleDragStateChange}
         accent={colors.accent}
         track={colors.lightBackground}
         cardBackground={'#fffffff9'}

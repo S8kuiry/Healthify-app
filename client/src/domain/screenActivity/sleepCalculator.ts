@@ -1,4 +1,4 @@
-import { getDb } from '@/db/client';
+import { getDbFresh } from '@/db/client';
 
 export interface NightlySleep {
   /** 'YYYY-MM-DD' - the local date the sleep window STARTED on */
@@ -34,7 +34,10 @@ export interface LastSleep {
  * notification reported.
  */
 export async function getLastCompletedSleep(): Promise<LastSleep | null> {
-  const db = await getDb();
+  // getDbFresh, not getDb: sleep_sessions rows are written by the native side
+  // through a different SQLite engine, and the cached JS connection would keep
+  // serving a snapshot taken before that write. See getDbFresh's note.
+  const db = await getDbFresh();
 
   const row = await db.getFirstAsync<{
     bed_time: string;
@@ -81,7 +84,8 @@ function toLocalDateKey(d: Date): string {
  * in progress is excluded - it has no duration to plot yet.
  */
 export async function getRecentSleepWindows(nights: number = 7): Promise<NightlySleep[]> {
-  const db = await getDb();
+  // Fresh connection for the same reason as getLastCompletedSleep.
+  const db = await getDbFresh();
 
   const rows = await db.getAllAsync<{
     bed_time: string;

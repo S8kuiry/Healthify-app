@@ -15,6 +15,9 @@ import { useAppColors } from '@/hooks/use-app-colors';
 import { useProfile } from '@/context/profileContext';
 import { getRecentSleepWindows, type NightlySleep } from '@/domain/screenActivity/sleepCalculator';
 
+// Extra strip below the plot that the dotted drop-lines run through, so they
+// visually connect each point to its day label instead of stopping short.
+const LABEL_GUTTER = 12;
 const CHART_HEIGHT = 132;
 const TOP_PAD = 18; // room for the value label above the highest marker
 const BOTTOM_PAD = 6; // keeps the lowest marker clear of the baseline
@@ -169,12 +172,12 @@ export default function SleepWeeklyGraph() {
       </View>
 
       <View
-        style={{ height: CHART_HEIGHT + 26 }}
+        style={{ height: CHART_HEIGHT + LABEL_GUTTER + 22 }}
         onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       >
         {width > 0 && (
           <>
-            <Svg width={width} height={CHART_HEIGHT}>
+            <Svg width={width} height={CHART_HEIGHT + LABEL_GUTTER}>
               <Defs>
                 {/* Area fill fades out downward so the baseline dissolves into the card */}
                 <LinearGradient id="sleepArea" x1="0" y1="0" x2="0" y2="1">
@@ -189,19 +192,35 @@ export default function SleepWeeklyGraph() {
                 </LinearGradient>
               </Defs>
 
-              {/* Horizontal guide rails - subtle, purely for depth */}
-              {[0, 0.5, 1].map((t) => {
+              {/* Mesh grid - faint horizontal rails + vertical ribs, giving the
+                  plot a scanned-grid depth behind the curve. */}
+              {[0, 0.25, 0.5, 0.75, 1].map((t) => {
                 const y = TOP_PAD + t * (CHART_HEIGHT - BOTTOM_PAD - TOP_PAD);
                 return (
                   <Line
-                    key={`g-${t}`}
+                    key={`gh-${t}`}
                     x1={H_PAD}
                     y1={y}
                     x2={width - H_PAD}
                     y2={y}
-                    stroke={colors.border}
-                    strokeWidth={1}
-                    opacity={0.08}
+                    stroke={colors.accent}
+                    strokeWidth={0.5}
+                    opacity={t === 1 ? 0.18 : 0.07}
+                  />
+                );
+              })}
+              {Array.from({ length: 9 }).map((_, i) => {
+                const x = H_PAD + (i / 8) * (width - H_PAD * 2);
+                return (
+                  <Line
+                    key={`gv-${i}`}
+                    x1={x}
+                    y1={TOP_PAD}
+                    x2={x}
+                    y2={CHART_HEIGHT - BOTTOM_PAD}
+                    stroke={colors.accent}
+                    strokeWidth={0.5}
+                    opacity={0.05}
                   />
                 );
               })}
@@ -235,6 +254,27 @@ export default function SleepWeeklyGraph() {
                       strokeLinejoin="round"
                     />
                   )}
+
+                  {/* Dotted drop-lines tying each point down to its day label */}
+                  {geometry.points.map((p, i) => {
+                    if (p.night.durationMinutes === null) return null;
+                    return (
+                      <Line
+                        key={`drop-${i}`}
+                        x1={p.x}
+                        y1={p.y + 7}
+                        x2={p.x}
+                        // Stop a few px short of the label so the dashes end
+                        // just above the letter rather than running past it.
+                        y2={CHART_HEIGHT - BOTTOM_PAD + LABEL_GUTTER - 5}
+                        stroke={colors.accent}
+                        strokeWidth={1.5}
+                        strokeDasharray="2 4"
+                        strokeLinecap="round"
+                        opacity={0.55}
+                      />
+                    );
+                  })}
 
                   {/* Markers: filled for measured nights, hollow dash for gaps */}
                   {geometry.points.map((p, i) => {
@@ -305,16 +345,26 @@ export default function SleepWeeklyGraph() {
 
             {/* Day labels, aligned to each point's x */}
             {geometry && hasData && (
-              <View style={{ height: 20, marginTop: 2 }}>
-                {geometry.points.map((p, i) => (
-                  <Text
-                    key={`d-${i}`}
-                    className="text-textMuted text-[9px] font-bold absolute text-center"
-                    style={{ left: p.x - 10, width: 20 }}
-                  >
-                    {dayLabel(p.night.nightDate)}
-                  </Text>
-                ))}
+              <View style={{ height: 18 }}>
+                {geometry.points.map((p, i) => {
+                  const measuredNight = p.night.durationMinutes !== null;
+                  return (
+                    <Text
+                      key={`d-${i}`}
+                      className="text-[9px] font-bold absolute text-center"
+                      // Nights with data pick up the accent so the dotted
+                      // drop-line reads as terminating ON the label.
+                      style={{
+                        left: p.x - 10,
+                        width: 20,
+                        color: measuredNight ? colors.accent : colors.textMuted,
+                        opacity: measuredNight ? 0.9 : 0.6,
+                      }}
+                    >
+                      {dayLabel(p.night.nightDate)}
+                    </Text>
+                  );
+                })}
               </View>
             )}
           </>

@@ -1,4 +1,4 @@
-import { getDb } from './client';
+import { getDb, getDbFresh } from './client';
 
 
 export type DailyActivity = {
@@ -39,7 +39,11 @@ export async function upsertDailyActivity(
  * was never closed out (e.g. before install, or today before rollover).
  */
 export async function getDailyActivity(date: string): Promise<DailyActivity | null> {
-    const db = await getDb();
+    // getDbFresh: daily_activity rows are written by the NATIVE step tracker
+    // through a different SQLite engine, so the long-lived JS connection can hold
+    // a read snapshot taken before those writes. Only the connection differs -
+    // the query and its results are unchanged. See getDbFresh's note in db/client.
+    const db = await getDbFresh();
     const row = await db.getFirstAsync<any>(
         `SELECT date, steps, calories, step_goal, calorie_goal
          FROM daily_activity WHERE date = ?;`,
@@ -61,7 +65,8 @@ export async function getDailyActivity(date: string): Promise<DailyActivity | nu
  * caller is responsible for filling gaps with 0.
  */
 export async function getWeekActivity(startDate: string, endDate: string): Promise<DailyActivity[]> {
-    const db = await getDb();
+    // Fresh view of native writes - see getDailyActivity above.
+    const db = await getDbFresh();
     const rows = await db.getAllAsync<any>(
         `SELECT date, steps, calories, step_goal, calorie_goal
          FROM daily_activity
@@ -82,7 +87,8 @@ export async function getWeekActivity(startDate: string, endDate: string): Promi
  * Fetch all snapshot rows for a given month, e.g. '2026-06'.
  */
 export async function getMonthActivity(yearMonth: string): Promise<DailyActivity[]> {
-    const db = await getDb();
+    // Fresh view of native writes - see getDailyActivity above.
+    const db = await getDbFresh();
     const rows = await db.getAllAsync<any>(
         `SELECT date, steps, calories, step_goal, calorie_goal
          FROM daily_activity
@@ -104,7 +110,10 @@ export async function getMonthActivity(yearMonth: string): Promise<DailyActivity
  * Powers the monthly weight-trend chart, which aggregates these days by month.
  */
 export async function getYearActivity(year: string): Promise<DailyActivity[]> {
-    const db = await getDb();
+    // Fresh view of native writes - see getDailyActivity above. This one powers
+    // the profile page's activity/weight trend chart, which reads PAST days from
+    // the DB (unlike the live dashboard count, which comes from native events).
+    const db = await getDbFresh();
     const rows = await db.getAllAsync<any>(
         `SELECT date, steps, calories, step_goal, calorie_goal
          FROM daily_activity

@@ -89,4 +89,40 @@ export async function recoverCorruptDatabase(): Promise<SQLite.SQLiteDatabase> {
   return dbInstance;
 }
 
+/**
+ * Returns the shared connection after refreshing its view of the WAL, so reads
+ * see rows written by the NATIVE side.
+ *
+ * Why this is needed: the JS connection is opened once and cached for the life of
+ * the process, and the native services (sleep finalize, step tracker) run in that
+ * SAME process but write through a completely different SQLite implementation -
+ * Android's framework SQLite, vs expo-sqlite's bundled libsql. Each engine keeps
+ * its own read snapshot of the WAL, so frames appended by one are not automatically
+ * visible to a long-lived connection of the other.
+ *
+ * That is exactly why an overnight sleep window could finalize correctly at 07:18
+ * (duration written, notification posted) yet the card and graph still read empty
+ * hours later: the app process never died, so the cached JS connection kept
+ * serving its pre-write snapshot.
+ *
+ * A PASSIVE checkpoint folds the committed WAL frames into the main database and
+ * ends this connection's stale read snapshot, so the next query sees them.
+ * Crucially it does NOT close the connection: an earlier version of this closed
+ * and reopened, which invalidated the handle other callers (e.g. the sleep-window
+ * picker) were already using and made them fail with "Access to closed resource".
+ * PASSIVE also never blocks on a concurrent writer - it simply does nothing if the
+ * WAL is busy, which is the right trade for a UI read.
+ */
+export async function getDbFresh(): Promise<SQLite.SQLiteDatabase> {
+  const db = await getDb();
+  try {
+    await db.execAsync('PRAGMA wal_checkpoint(PASSIVE);');
+  } catch (err) {
+    // Never fatal: a failed checkpoint just means this read may be stale, which
+    // is far better than breaking the caller.
+    console.warn('[db] wal_checkpoint failed; read may be stale:', err);
+  }
+  return db;
+}
+
 export { isCorruptionError };

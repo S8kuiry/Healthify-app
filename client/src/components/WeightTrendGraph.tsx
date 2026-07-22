@@ -1,6 +1,15 @@
 import React, { useRef, useMemo } from 'react';
 import { View, Text, ScrollView, useColorScheme } from 'react-native';
-import Svg, { Rect, Line, Polyline, Circle, Text as SvgText } from 'react-native-svg';
+import Svg, {
+  Rect,
+  Line,
+  Path,
+  Circle,
+  Defs,
+  LinearGradient,
+  Stop,
+  Text as SvgText,
+} from 'react-native-svg';
 import { Feather } from '@expo/vector-icons';
 import type { DailyActivity } from '@/db/dailyActivityRepo';
 import { formatShortDayMonth } from '@/domain/date';
@@ -29,6 +38,9 @@ const TOP_PAD = 4;
 // (r=4 + stroke) never dips below the graph or gets clipped.
 const WEIGHT_TOP_Y = TOP_PAD + TOP_LABEL_SPACE + 8;
 const WEIGHT_BOTTOM_Y = CHART_HEIGHT - 20 - 6;
+// Strip below the baseline that the dotted drop-lines run through, so they
+// visually connect each weigh-in to its month label.
+const LABEL_GUTTER = 12;
 
 const monthLabel = () => new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
@@ -40,6 +52,25 @@ const monthShort = (ym: string) => {
 
 // Whole numbers show plainly (80), fractional show one decimal (79.5).
 const formatWeight = (w: number) => (Number.isInteger(w) ? String(w) : w.toFixed(1));
+
+/**
+ * Smooth cubic through the points, with control points pulled horizontally so
+ * the curve can't overshoot between weigh-ins. Same curve style as the sleep
+ * chart, purely visual - the plotted values are unchanged.
+ */
+function buildSmoothPath(pts: { x: number; y: number }[]): string {
+  if (pts.length === 0) return '';
+  if (pts.length === 1) return `M ${pts[0].x} ${pts[0].y}`;
+
+  let d = `M ${pts[0].x} ${pts[0].y}`;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const p0 = pts[i];
+    const p1 = pts[i + 1];
+    const cx = (p0.x + p1.x) / 2;
+    d += ` C ${cx} ${p0.y}, ${cx} ${p1.y}, ${p1.x} ${p1.y}`;
+  }
+  return d;
+}
 
 // A chart column: either the carried-over anchor (last year's kept weight) or a month.
 type Column = {
@@ -57,9 +88,7 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
   const colorScheme = useColorScheme();
   const accent = colorScheme === 'dark' ? '#34D399' : '#059669';
   const iconColor = colorScheme === 'dark' ? 'rgb(246, 113, 135)' : 'rgb(233, 112, 137)';
-  const svgTextColor = colorScheme === 'dark' ? 'rgba(229, 39, 5, 0.94)' : 'rgba(231, 39, 5, 0.93)';
-  const weightLine = colorScheme === 'dark' ? 'rgb(245, 172, 71)' : 'rgb(244, 171, 76)';
-  const barTrack = colorScheme === 'dark' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(71, 85, 105, 0.08)';
+  const weightLine = colorScheme === 'dark' ? '#34D399' : '#059669';
   const gridColor = colorScheme === 'dark' ? '#94A3B8' : '#64748B';
   const dotFill = colorScheme === 'dark' ? '#FFFFFF' : '#FFFFFF';
 
@@ -164,18 +193,25 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
   const chartWidth = Math.max(stats.columns.length * (BAR_WIDTH + BAR_GAP) + H_PAD * 2, 220);
 
   // Weight line points — one per column that has a weigh-in (anchor + months).
+  const MIN_WEIGHT_RANGE = 15; // kg — floor so small swings don't look dramatic
+
   const weightPoints = useMemo(() => {
-    const range = stats.maxWeight - stats.minWeight;
+    const rawRange = stats.maxWeight - stats.minWeight;
+    const range = Math.max(rawRange, MIN_WEIGHT_RANGE);
+    const pad = (range - rawRange) / 2;
+    const effectiveMin = stats.minWeight - pad;
+
     return stats.columns
       .map((c, i) => {
         if (c.weight === undefined) return null;
         const x = H_PAD + i * (BAR_WIDTH + BAR_GAP) + BAR_WIDTH / 2;
-        const ratio = range === 0 ? 0.5 : (c.weight - stats.minWeight) / range;
+        const ratio = (c.weight - effectiveMin) / range;
         const y = WEIGHT_TOP_Y + (1 - ratio) * (WEIGHT_BOTTOM_Y - WEIGHT_TOP_Y);
-        return { x, y, w: c.weight };
+        return { x, y, w: c.weight, isCurrent: c.isCurrent };
       })
-      .filter((p): p is { x: number; y: number; w: number } => p !== null);
+      .filter((p): p is { x: number; y: number; w: number; isCurrent: boolean } => p !== null);
   }, [stats]);
+
 
   return (
     <View className="mb-2">
@@ -215,7 +251,7 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
               <Feather name="zap" size={11} color={iconColor} />
               <Text className="text-textSecondary text-[9px] font-bold tracking-widest uppercase mb-1">Kcal</Text>
             </View>
-            <Text className="text-textPrimary  font-black tracking-tight " style={{ fontVariant: ['tabular-nums'] }}>
+            <Text className="text-textPrimary text-base font-black tracking-tight " style={{ fontVariant: ['tabular-nums'] }}>
               {stats.totalCalories.toLocaleString()}
             </Text>
 
@@ -232,8 +268,21 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
               <Text className="text-textMuted text-sm font-bold">—</Text>
             ) : (
               <Text
-                className="text-textPrimary  font-black tracking-tight"
-                style={{ fontVariant: ['tabular-nums'], color: stats.weightChange > 0 ? '#DC2626' : stats.weightChange < 0 ? accent : undefined }}
+                className="font-black tracking-tight"
+                // Always resolve to a real colour. A `color: undefined` here still
+                // overrides the text-textPrimary class rather than falling back to
+                // it, so an unchanged weight (exactly 0.0 kg) rendered in RN's
+                // default black - invisible in dark mode. Gain/loss keep their
+                // red/accent tint; no change falls back to the theme's primary.
+                style={{
+                  fontVariant: ['tabular-nums'],
+                  color:
+                    stats.weightChange > 0
+                      ? '#DC2626'
+                      : stats.weightChange < 0
+                        ? accent
+                        : colors.textPrimary,
+                }}
               >
                 {stats.weightChange > 0 ? '+' : ''}
                 {stats.weightChange.toFixed(1)}
@@ -259,7 +308,56 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
             contentContainerStyle={{ paddingTop: 12, paddingBottom: 6 }}
           >
             <View style={{ width: chartWidth }}>
-              <Svg width={chartWidth} height={CHART_HEIGHT}>
+              <Svg width={chartWidth} height={CHART_HEIGHT + LABEL_GUTTER}>
+                <Defs>
+                  {/* Vertical fade for the bars, matching the sleep chart's area fill */}
+                  {/* Step bars stay accent-green but fade out downward, so they
+                      sit behind the yellow weight series instead of fighting it. */}
+                  {/* <LinearGradient id="wtBar" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={accent} stopOpacity={0.9} />
+                    <Stop offset="1" stopColor={accent} stopOpacity={0.15} />
+                  </LinearGradient> */}
+                  <LinearGradient id="wtLine" x1="0" y1="0" x2="1" y2="0">
+                    <Stop offset="0" stopColor={weightLine} stopOpacity={0.55} />
+                    <Stop offset="0.5" stopColor={weightLine} stopOpacity={1} />
+                    <Stop offset="1" stopColor={weightLine} stopOpacity={0.85} />
+                  </LinearGradient>
+                </Defs>
+
+                {/* Mesh grid - faint rails + ribs for scanned-grid depth */}
+                {[0, 0.25, 0.5, 0.75].map((t) => {
+                  const y = TOP_PAD + TOP_LABEL_SPACE + t * (CHART_HEIGHT - 20 - TOP_PAD - TOP_LABEL_SPACE);
+                  return (
+                    <Line
+                      key={`mh-${t}`}
+                      x1={H_PAD}
+                      y1={y}
+                      x2={chartWidth - H_PAD}
+                      y2={y}
+                      stroke={gridColor}
+                      strokeWidth={0.5}
+                      opacity={0.09}
+                    />
+                  );
+                })}
+                {/* Evenly spaced ribs across the plot, independent of how many
+                    months exist - a single column shouldn't leave one lone rib. */}
+                {Array.from({ length: 9 }).map((_, i) => {
+                  const x = H_PAD + (i / 8) * (chartWidth - H_PAD * 2);
+                  return (
+                    <Line
+                      key={`mv-${i}`}
+                      x1={x}
+                      y1={TOP_PAD + TOP_LABEL_SPACE}
+                      x2={x}
+                      y2={CHART_HEIGHT - 20}
+                      stroke={gridColor}
+                      strokeWidth={0.5}
+                      opacity={0.06}
+                    />
+                  );
+                })}
+
                 <Line
                   x1={H_PAD}
                   y1={CHART_HEIGHT - 20}
@@ -267,40 +365,43 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
                   y2={CHART_HEIGHT - 20}
                   stroke={gridColor}
                   strokeWidth={1}
-                  opacity={0.15}
+                  opacity={0.2}
                 />
 
+                {/* Step bars: slim accent ticks sitting on the baseline. Kept
+                    deliberately narrow and low-contrast so they read as context
+                    behind the weight trend rather than competing with it. */}
+                {/* Step bars removed — no longer rendering */}
                 {stats.columns.map((c, i) => {
-                  // The leading anchor column carries no step bar — just its weight point.
                   if (c.kind === 'anchor') return null;
-                  const barMaxHeight = CHART_HEIGHT - 20 - TOP_LABEL_SPACE - TOP_PAD;
-                  const barHeight = Math.max((c.avgSteps / stats.maxAvgSteps) * barMaxHeight, 3);
-                  const x = H_PAD + i * (BAR_WIDTH + BAR_GAP);
-                  const y = CHART_HEIGHT - 20 - barHeight;
-
-                  return (
-                    <React.Fragment key={c.key}>
-                      <Rect
-                        x={x}
-                        y={TOP_PAD + TOP_LABEL_SPACE}
-                        width={BAR_WIDTH}
-                        height={barMaxHeight}
-                        rx={6}
-                        fill={barTrack}
-                      />
-                      <Rect x={x} y={y} width={BAR_WIDTH} height={barHeight} rx={6} fill={accent} opacity={c.isCurrent ? 1 : 0.55} />
-                    </React.Fragment>
-                  );
+                  return null;
                 })}
 
-                {weightPoints.length > 1 && (
-                  <Polyline
-                    points={weightPoints.map((p) => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke={weightLine}
-                    strokeWidth={2}
-                    strokeDasharray="4 3"
+                {/* Dotted drop-lines tying each weigh-in down to its month label */}
+                {/* Dotted drop-lines tying each weigh-in down to its month label */}
+                {weightPoints.map((p, i) => (
+                  <Line
+                    key={`drop-${i}`}
+                    x1={p.x}
+                    y1={p.y + 7}
+                    x2={p.x}
+                    y2={CHART_HEIGHT - 20}
+                    stroke={p.isCurrent ? iconColor : weightLine}
+                    strokeWidth={1.5}
+                    strokeDasharray="2 4"
                     strokeLinecap="round"
+                    opacity={0.5}
+                  />
+                ))}
+
+                {weightPoints.length > 1 && (
+                  <Path
+                    d={buildSmoothPath(weightPoints)}
+                    fill="none"
+                    stroke="url(#wtLine)"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   />
                 )}
 
@@ -308,29 +409,39 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
                 {weightPoints.map((p, i) => (
                   <React.Fragment key={`w-${i}`}>
                     <SvgText
-                      x={p.x - 2}
+                      x={p.x}
                       y={p.y - 12}
                       fontSize={9}
                       fontWeight="bold"
-                      fill={svgTextColor}
-
+                      // Matches the trend line/marker so the whole weight series
+                      // reads as one colour, instead of the old clashing red.
+                      fill={p.isCurrent ? iconColor : weightLine}
                       textAnchor="middle"
-
                     >
                       {formatWeight(p.w)}kg
                     </SvgText>
-                    <Circle cx={p.x} cy={p.y} r={4} fill={dotFill} stroke={weightLine} strokeWidth={2} />
-                  </React.Fragment>
+                    {/* Glow halo under the marker, matching the sleep chart */}
+                    <Circle cx={p.x} cy={p.y} r={7} fill={weightLine} opacity={0.16} />
+<Circle cx={p.x} cy={p.y} r={4} fill={dotFill} stroke={p.isCurrent ? iconColor : weightLine} strokeWidth={2.5} />                  </React.Fragment>
                 ))}
               </Svg>
 
               {/* Column labels below chart (anchor month + each month) */}
-              <View style={{ flexDirection: 'row', paddingLeft: H_PAD, marginTop: 4 }}>
+              {/* Column labels below chart (anchor month + each month) */}
+              <View style={{ flexDirection: 'row', paddingLeft: H_PAD }}>
                 {stats.columns.map((c) => (
                   <Text
                     key={`m-${c.key}`}
-                    className={`text-[8px] font-bold text-center ${c.isCurrent ? 'text-accent' : 'text-textMuted'}`}
-                    style={{ width: BAR_WIDTH + BAR_GAP }}
+                    className="text-[8px] font-bold text-center"
+                    // Months with a weigh-in pick up the trend colour so the
+                    // dotted drop-line reads as terminating ON the label.
+                    style={{
+                      marginTop: -22,
+                      width: BAR_WIDTH,
+                      marginRight: BAR_GAP,
+                      color: c.isCurrent ? iconColor : c.weight !== undefined ? weightLine : colors.textMuted,
+                      opacity: c.weight !== undefined || c.isCurrent ? 0.9 : 0.6,
+                    }}
                   >
                     {c.label}
                   </Text>

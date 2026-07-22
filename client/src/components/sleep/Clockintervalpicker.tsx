@@ -41,6 +41,13 @@ interface ClockIntervalPickerProps {
   wakeMinutes: number;
   onChangeBed: (minutesOfDay: number) => void;
   onChangeWake: (minutesOfDay: number) => void;
+  /**
+   * Fired when a drag STARTS and ENDS. Lets the parent hold off expensive work
+   * (the settings write does a blocking WAL checkpoint plus a native alarm
+   * reschedule) until the finger is lifted, instead of running it mid-gesture
+   * and stuttering the slider.
+   */
+  onDragStateChange?: (dragging: boolean) => void;
   accent: string;
   track: string;
   cardBackground: string;
@@ -53,6 +60,7 @@ export default function ClockIntervalPicker({
   wakeMinutes,
   onChangeBed,
   onChangeWake,
+  onDragStateChange,
   accent,
   track,
   cardBackground,
@@ -69,10 +77,12 @@ export default function ClockIntervalPicker({
   const onChangeWakeRef = useRef(onChangeWake);
   const bedMinutesRef = useRef(bedMinutes);
   const wakeMinutesRef = useRef(wakeMinutes);
+  const onDragStateChangeRef = useRef(onDragStateChange);
   onChangeBedRef.current = onChangeBed;
   onChangeWakeRef.current = onChangeWake;
   bedMinutesRef.current = bedMinutes;
   wakeMinutesRef.current = wakeMinutes;
+  onDragStateChangeRef.current = onDragStateChange;
 
   const measureCenter = useCallback(() => {
     containerRef.current?.measureInWindow((x, y, width, height) => {
@@ -92,6 +102,7 @@ export default function ClockIntervalPicker({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
+          onDragStateChangeRef.current?.(true);
           const withinHalfDay = minutesWithinHalfDayForAngle(
             angleFromTouch(evt.nativeEvent.pageX, evt.nativeEvent.pageY)
           );
@@ -105,6 +116,10 @@ export default function ClockIntervalPicker({
           const isPM = bedMinutesRef.current >= HALF_DAY_MINUTES;
           onChangeBedRef.current(withinHalfDay + (isPM ? HALF_DAY_MINUTES : 0));
         },
+        // Terminate fires when the gesture is stolen (e.g. by a parent scroll);
+        // treat it as an end too so a save can never be stranded.
+        onPanResponderRelease: () => onDragStateChangeRef.current?.(false),
+        onPanResponderTerminate: () => onDragStateChangeRef.current?.(false),
       }),
     [angleFromTouch]
   );
@@ -115,6 +130,7 @@ export default function ClockIntervalPicker({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
         onPanResponderGrant: (evt) => {
+          onDragStateChangeRef.current?.(true);
           const withinHalfDay = minutesWithinHalfDayForAngle(
             angleFromTouch(evt.nativeEvent.pageX, evt.nativeEvent.pageY)
           );
@@ -128,6 +144,8 @@ export default function ClockIntervalPicker({
           const isPM = wakeMinutesRef.current >= HALF_DAY_MINUTES;
           onChangeWakeRef.current(withinHalfDay + (isPM ? HALF_DAY_MINUTES : 0));
         },
+        onPanResponderRelease: () => onDragStateChangeRef.current?.(false),
+        onPanResponderTerminate: () => onDragStateChangeRef.current?.(false),
       }),
     [angleFromTouch]
   );

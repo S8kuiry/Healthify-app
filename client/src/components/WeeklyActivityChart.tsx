@@ -22,7 +22,7 @@ const DEFAULT_CALORIE_GOAL = 300;
 const STATUS_COLORS = {
   success: '#34D399',
   partial: '#EAB308',
-  empty: 'rgba(148, 163, 184, 0.35)',
+  empty: '#34d399',
   logged: '#94a3b8',
 } as const;
 
