@@ -69,19 +69,47 @@ export default function SleepWeeklyGraph() {
   // Refresh on focus: sleep rows are written by the native side after a window
   // finalizes, so a one-shot [dbReady] read would never pick them up without a
   // full app restart. See the fuller note in Sleepsummarycard.
+  //
+  // Empty-read retry: same race as the summary card - tapping the wake-up
+  // notification the instant it fires can read before the native finalize has
+  // released the WAL, so the just-finalized night is momentarily invisible. We
+  // re-read a few times over ~2s so the new point shows without needing a manual
+  // refocus. Scoped to this component only; nothing else depends on it. A read
+  // that already returns at least one MEASURED night is trusted immediately.
   useFocusEffect(
     useCallback(() => {
       if (!dbReady) return;
 
       let cancelled = false;
-      getRecentSleepWindows()
-        .then((result) => {
-          if (!cancelled) setWeeklyData(result);
-        })
-        .catch((err) => console.error('Failed to load weekly sleep:', err))
-        .finally(() => {
-          if (!cancelled) setIsLoading(false);
-        });
+      const RETRY_DELAYS_MS = [400, 800, 1200];
+
+      const attempt = (retry: number) => {
+        getRecentSleepWindows()
+          .then((result) => {
+            if (cancelled) return;
+            const hasMeasured = result.some((w) => w.durationMinutes !== null);
+            // No measured night yet likely means the read raced the finalize -
+            // retry before settling. Once we have data (or run out of retries),
+            // commit whatever we last read.
+            if (!hasMeasured && retry < RETRY_DELAYS_MS.length) {
+              // Still surface any gap markers we did read while we retry.
+              setWeeklyData(result);
+              setTimeout(() => {
+                if (!cancelled) attempt(retry + 1);
+              }, RETRY_DELAYS_MS[retry]);
+              return;
+            }
+            setWeeklyData(result);
+            setIsLoading(false);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            console.error('Failed to load weekly sleep:', err);
+            setIsLoading(false);
+          });
+      };
+
+      attempt(0);
       return () => {
         cancelled = true;
       };

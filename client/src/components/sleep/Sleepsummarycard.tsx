@@ -43,25 +43,51 @@ export default function SleepSummaryCard() {
   // result until the app was fully restarted, even though the wake-up
   // notification had already fired and the row existed. Refreshing on focus is
   // what makes tapping the notification (or just returning to the tab) show it.
+  //
+  // Empty-read retry: when you tap the "sleep summary ready" notification the
+  // instant it appears, the native finalize may STILL be holding the WAL (posting
+  // the notification, pruning, closing its handle). getDbFresh's PASSIVE
+  // checkpoint no-ops while the writer is busy, so this first read can come back
+  // null even though the finalized row already exists. Rather than leaving the
+  // card blank until the user manually returns to the tab, we re-read a few times
+  // over ~2s; by then the writer has released the WAL and the row is visible.
+  // This is scoped entirely to this component - it never touches the shared DB
+  // layer or any other feature.
   useFocusEffect(
     useCallback(() => {
       if (!dbReady) return;
 
       let cancelled = false;
-      getLastCompletedSleep()
-        .then((result) => {
-          if (cancelled) return;
-          setLastSleep(result);
-          setError(null);
-        })
-        .catch((err) => {
-          if (cancelled) return;
-          console.error('Failed to load last sleep:', err);
-          setError('Failed to load sleep data');
-        })
-        .finally(() => {
-          if (!cancelled) setIsLoading(false);
-        });
+      // Short backoff so a read that races the native finalize gets another
+      // chance once the WAL is free, instead of showing "no data" until refocus.
+      const RETRY_DELAYS_MS = [400, 800, 1200];
+
+      const attempt = (retry: number) => {
+        getLastCompletedSleep()
+          .then((result) => {
+            if (cancelled) return;
+            // A null result right after waking usually means the read raced the
+            // finalize, not that there is genuinely no sleep - retry before
+            // settling on "no data". A non-null result is trusted immediately.
+            if (result === null && retry < RETRY_DELAYS_MS.length) {
+              setTimeout(() => {
+                if (!cancelled) attempt(retry + 1);
+              }, RETRY_DELAYS_MS[retry]);
+              return;
+            }
+            setLastSleep(result);
+            setError(null);
+            setIsLoading(false);
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            console.error('Failed to load last sleep:', err);
+            setError('Failed to load sleep data');
+            setIsLoading(false);
+          });
+      };
+
+      attempt(0);
       return () => {
         cancelled = true;
       };

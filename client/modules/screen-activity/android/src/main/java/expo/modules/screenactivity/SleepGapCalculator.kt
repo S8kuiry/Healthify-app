@@ -10,52 +10,84 @@ data class ScreenSessionData(
 object SleepGapCalculator {
   private const val TAG = "SleepGapCalculator"
 
+  /**
+   * Estimates how long the user slept inside the [bedTimeMs, wakeTimeMs] window
+   * as: total window length MINUS the total time the phone screen was on inside
+   * that window.
+   *
+   * Example: window 1:41 -> 8:30 is 6h49m. If the phone was switched on 5 times
+   * for ~1 minute each during the night, that is 5 minutes of screen-on time, so
+   * the reported sleep is 6h49m - 5m = 6h44m.
+   *
+   * This replaced an older "single largest uninterrupted gap" measure, which was
+   * badly pessimistic: one phone pickup in the middle of the night threw away
+   * every hour on the smaller side of it, so 7 hours of sleep with a single 4am
+   * clock-check could report as ~4 hours. Subtracting only the actual screen-on
+   * minutes matches what a person means by "how long did I sleep".
+   *
+   * The method name is kept so the existing caller is untouched; despite the
+   * name it returns total asleep minutes, not a single gap.
+   */
   fun computeLargestGapMinutes(
     sessions: List<ScreenSessionData>,
     bedTimeMs: Long,
     wakeTimeMs: Long
   ): Int {
+    val windowMs = wakeTimeMs - bedTimeMs
+    if (windowMs <= 0) return 0
+
+    val fullWindowMin = (windowMs / 60000).toInt()
+
     if (sessions.isEmpty()) {
-      val fullDurationMs = wakeTimeMs - bedTimeMs
-      val fullDurationMin = (fullDurationMs / 60000).toInt()
-      Log.d(TAG, "No sessions found, returning full duration: $fullDurationMin minutes")
-      return fullDurationMin
+      Log.d(TAG, "No sessions found, returning full window: $fullWindowMin minutes")
+      return fullWindowMin
     }
 
-    val sessionTimes = sessions.mapNotNull { session ->
+    // Clip every screen session to the window and keep only the parts that fall
+    // inside it. A session that starts before bed or ends after wake still
+    // counts for the portion that overlaps the window, and nothing outside it.
+    val clipped = sessions.mapNotNull { session ->
       val startMs = parseIso8601(session.startTime).time
+      // An open session (still on at wake) counts as on right up to wake time.
       val endMs = if (session.endTime != null) parseIso8601(session.endTime).time else wakeTimeMs
-      if (startMs >= bedTimeMs && startMs < wakeTimeMs) {
-        Pair(maxOf(startMs, bedTimeMs), minOf(endMs, wakeTimeMs))
-      } else null
+      val s = maxOf(startMs, bedTimeMs)
+      val e = minOf(endMs, wakeTimeMs)
+      if (e > s) Pair(s, e) else null
     }.sortedBy { it.first }
 
-    if (sessionTimes.isEmpty()) {
-      val fullDurationMs = wakeTimeMs - bedTimeMs
-      val fullDurationMin = (fullDurationMs / 60000).toInt()
-      Log.d(TAG, "No overlapping sessions, returning full duration: $fullDurationMin minutes")
-      return fullDurationMin
+    if (clipped.isEmpty()) {
+      Log.d(TAG, "No overlapping sessions, returning full window: $fullWindowMin minutes")
+      return fullWindowMin
     }
 
-    var largestGapMs = sessionTimes.first().first - bedTimeMs
-    var lastEnd = sessionTimes.first().second
-
-    for (i in 1 until sessionTimes.size) {
-      val gap = sessionTimes[i].first - lastEnd
-      if (gap > largestGapMs) {
-        largestGapMs = gap
+    // Merge overlapping / touching screen sessions BEFORE summing, so time the
+    // phone was on is never counted twice. Without this, two sessions that
+    // overlap (or an open session that spans several closed ones) would subtract
+    // more than the real screen-on time and under-report sleep.
+    var screenOnMs = 0L
+    var curStart = clipped.first().first
+    var curEnd = clipped.first().second
+    for (i in 1 until clipped.size) {
+      val (s, e) = clipped[i]
+      if (s <= curEnd) {
+        // Overlapping or adjacent - extend the current on-block.
+        curEnd = maxOf(curEnd, e)
+      } else {
+        screenOnMs += curEnd - curStart
+        curStart = s
+        curEnd = e
       }
-      lastEnd = maxOf(lastEnd, sessionTimes[i].second)
     }
+    screenOnMs += curEnd - curStart
 
-    val finalGap = wakeTimeMs - lastEnd
-    if (finalGap > largestGapMs) {
-      largestGapMs = finalGap
-    }
+    val sleepMs = (windowMs - screenOnMs).coerceAtLeast(0)
+    val sleepMin = (sleepMs / 60000).toInt()
 
-    val largestGapMin = (largestGapMs / 60000).toInt()
-    Log.d(TAG, "Computed largest gap: $largestGapMin minutes")
-    return largestGapMin
+    Log.d(
+      TAG,
+      "Window=${fullWindowMin}m screenOn=${screenOnMs / 60000}m -> sleep=$sleepMin minutes"
+    )
+    return sleepMin
   }
 
   private fun parseIso8601(isoStr: String): java.util.Date {
