@@ -11,6 +11,21 @@ object SleepGapCalculator {
   private const val TAG = "SleepGapCalculator"
 
   /**
+   * The longest a single uninterrupted screen-on stretch is trusted as real.
+   *
+   * When the service process is killed WHILE the screen is on and the later
+   * SCREEN_OFF fires with nobody alive to hear it, that session's true off time
+   * is unrecoverable - it survives as one enormous on-block (its end forced to
+   * wake time). Counting it verbatim subtracts the whole night and reports ~0
+   * sleep. Nobody actually stares at the phone for hours in the middle of a
+   * sleep window, so any single stretch beyond this cap is treated as a lost-OFF
+   * artifact and clamped to the cap rather than believed. Genuine long use (a
+   * 45-min video before bed) still counts fully.
+   */
+  private const val MAX_TRUSTED_ON_STRETCH_MIN = 90
+  private const val MAX_TRUSTED_ON_STRETCH_MS = MAX_TRUSTED_ON_STRETCH_MIN * 60_000L
+
+  /**
    * Estimates how long the user slept inside the [bedTimeMs, wakeTimeMs] window
    * as: total window length MINUS the total time the phone screen was on inside
    * that window.
@@ -73,12 +88,12 @@ object SleepGapCalculator {
         // Overlapping or adjacent - extend the current on-block.
         curEnd = maxOf(curEnd, e)
       } else {
-        screenOnMs += curEnd - curStart
+        screenOnMs += trustedOnMs(curStart, curEnd)
         curStart = s
         curEnd = e
       }
     }
-    screenOnMs += curEnd - curStart
+    screenOnMs += trustedOnMs(curStart, curEnd)
 
     val sleepMs = (windowMs - screenOnMs).coerceAtLeast(0)
     val sleepMin = (sleepMs / 60000).toInt()
@@ -88,6 +103,27 @@ object SleepGapCalculator {
       "Window=${fullWindowMin}m screenOn=${screenOnMs / 60000}m -> sleep=$sleepMin minutes"
     )
     return sleepMin
+  }
+
+  /**
+   * The screen-on duration to trust for a single merged on-block, clamped to
+   * [MAX_TRUSTED_ON_STRETCH_MS]. A block longer than the cap is almost certainly
+   * a session whose SCREEN_OFF was never recorded (process killed while on), not
+   * hours of genuine use, so we subtract only the cap's worth rather than letting
+   * one artifact swallow the whole night.
+   */
+  private fun trustedOnMs(startMs: Long, endMs: Long): Long {
+    val span = endMs - startMs
+    if (span <= 0L) return 0L
+    if (span > MAX_TRUSTED_ON_STRETCH_MS) {
+      Log.w(
+        TAG,
+        "On-block of ${span / 60000}m exceeds ${MAX_TRUSTED_ON_STRETCH_MIN}m cap; " +
+          "treating as lost-OFF artifact and clamping"
+      )
+      return MAX_TRUSTED_ON_STRETCH_MS
+    }
+    return span
   }
 
   private fun parseIso8601(isoStr: String): java.util.Date {

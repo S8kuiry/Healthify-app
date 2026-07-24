@@ -217,24 +217,37 @@ class ScreenActivityService : Service() {
           }
         }
         "SCREEN_OFF" -> {
-          if (openSessionId != null) {
-            var db: SQLiteDatabase? = null
-            try {
-              db = openDatabase()
-              if (db != null) {
-                db.beginTransaction()
-                ScreenSessionRepo.closeSession(db, openSessionId!!, getCurrentTimeIso8601())
-                db.setTransactionSuccessful()
-                Log.d(TAG, "Closed session: $openSessionId")
-                openSessionId = null
+          var db: SQLiteDatabase? = null
+          try {
+            db = openDatabase()
+            if (db != null) {
+              db.beginTransaction()
+              // Record the OFF at the TRUE moment the screen turned off (this
+              // handler runs the instant the broadcast fires), so the on-stretch
+              // is measured accurately - not stretched to some later time.
+              //
+              // Do NOT rely on the in-memory openSessionId to find the row. If
+              // the service process was killed and recreated between this
+              // screen's ON and OFF, that field is null even though a row is
+              // genuinely open in the DB - and the OFF would be dropped, leaving
+              // the row stuck at end_time=NULL forever (which later reads as "on
+              // all night" and reports ~0 sleep). getOpenSession resolves the
+              // open row straight from the DB, so the OFF always lands on it
+              // whether or not RAM survived.
+              val idToClose = openSessionId ?: ScreenSessionRepo.getOpenSession(db)
+              if (idToClose != null) {
+                ScreenSessionRepo.closeSession(db, idToClose, getCurrentTimeIso8601())
+                Log.d(TAG, "Closed session: $idToClose")
               }
-            } catch (e: Exception) {
-              Log.e(TAG, "Error closing session", e)
-            } finally {
-              db?.apply {
-                endTransaction()
-                close()
-              }
+              db.setTransactionSuccessful()
+              openSessionId = null
+            }
+          } catch (e: Exception) {
+            Log.e(TAG, "Error closing session", e)
+          } finally {
+            db?.apply {
+              endTransaction()
+              close()
             }
           }
         }
@@ -318,16 +331,22 @@ class ScreenActivityService : Service() {
     try {
       db = openDatabase()
       if (db != null) {
-        // Close any open session with retries to handle database locks
-        if (openSessionId != null) {
+        // Close any open session with retries to handle database locks. Resolve
+        // the id from the DB, not just the in-memory openSessionId: a row left
+        // open by a previous (killed) run whose OFF was never heard would
+        // otherwise survive to the duration query below, where end_time=NULL
+        // reads as "screen on until wake" and reports ~0 sleep. Closing at 'now'
+        // is correct at finalize: this runs at the wake instant, so a screen
+        // that is legitimately still on (user awake) ends exactly at wake.
+        val openToClose = openSessionId ?: ScreenSessionRepo.getOpenSession(db)
+        if (openToClose != null) {
           try {
-            ScreenSessionRepo.closeSessionWithRetry(db, openSessionId!!, getCurrentTimeIso8601())
-            openSessionId = null
+            ScreenSessionRepo.closeSessionWithRetry(db, openToClose, getCurrentTimeIso8601())
           } catch (e: Exception) {
             Log.e(TAG, "Failed to close session after retries", e)
-            openSessionId = null
           }
         }
+        openSessionId = null
 
         // Resolve the occurrence to finalize: prefer the row this service is
         // actively tracking, then the row matching the STOP alarm's wake

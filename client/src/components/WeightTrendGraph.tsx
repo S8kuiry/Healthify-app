@@ -213,6 +213,19 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
   }, [stats]);
 
 
+  /**
+ * Same smooth curve as buildSmoothPath, but closed down to the baseline so it
+ * can be used as a fill. Only meaningful with 2+ points.
+ */
+  function buildAreaPath(pts: { x: number; y: number }[], baselineY: number): string {
+    if (pts.length < 2) return '';
+    const line = buildSmoothPath(pts);
+    const first = pts[0];
+    const last = pts[pts.length - 1];
+    return `${line} L ${last.x} ${baselineY} L ${first.x} ${baselineY} Z`;
+  }
+
+
   return (
     <View className="mb-2">
       <View className="flex-row justify-between items-baseline mb-3 px-1">
@@ -322,6 +335,11 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
                     <Stop offset="0.5" stopColor={weightLine} stopOpacity={1} />
                     <Stop offset="1" stopColor={weightLine} stopOpacity={0.85} />
                   </LinearGradient>
+
+                  <LinearGradient id="wtArea" x1="0" y1="0" x2="0" y2="1">
+                    <Stop offset="0" stopColor={weightLine} stopOpacity={0.28} />
+                    <Stop offset="1" stopColor={weightLine} stopOpacity={0} />
+                  </LinearGradient>
                 </Defs>
 
                 {/* Mesh grid - faint rails + ribs for scanned-grid depth */}
@@ -396,6 +414,25 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
 
                 {weightPoints.length > 1 && (
                   <Path
+                    d={buildAreaPath(weightPoints, CHART_HEIGHT - 20)}
+                    fill="url(#wtArea)"
+                    stroke="none"
+                  />
+                )}
+
+                {/* {weightPoints.length > 1 && (
+                  <Path
+                    d={buildSmoothPath(weightPoints)}
+                    fill="none"
+                    stroke="url(#wtLine)"
+                    strokeWidth={2.5}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                )} */}
+
+                {weightPoints.length > 1 && (
+                  <Path
                     d={buildSmoothPath(weightPoints)}
                     fill="none"
                     stroke="url(#wtLine)"
@@ -422,7 +459,7 @@ export default function WeightTrendGraph({ weightHistory, activity }: WeightTren
                     </SvgText>
                     {/* Glow halo under the marker, matching the sleep chart */}
                     <Circle cx={p.x} cy={p.y} r={7} fill={weightLine} opacity={0.16} />
-<Circle cx={p.x} cy={p.y} r={4} fill={dotFill} stroke={p.isCurrent ? iconColor : weightLine} strokeWidth={2.5} />                  </React.Fragment>
+                    <Circle cx={p.x} cy={p.y} r={4} fill={dotFill} stroke={p.isCurrent ? iconColor : weightLine} strokeWidth={2.5} />                  </React.Fragment>
                 ))}
               </Svg>
 
